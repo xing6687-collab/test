@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DELIVERY TO DIE — TPS 프로토타입</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#0c0c10; }
+  body { font-family:"Segoe UI","Malgun Gothic",monospace; display:flex; align-items:center; justify-content:center; }
+  #game { display:block; cursor:none; background:#1a1d17; }
+
+  #hud { position:fixed; inset:0; pointer-events:none; color:#fff;
+         text-shadow:0 0 4px #000,1px 1px 2px #000; font-weight:700; }
+  #stats { position:absolute; top:12px; left:14px; font-size:15px; line-height:1.65; }
+  #stats .hp{color:#ff5d5d;} #stats .credit{color:#ffd45d;font-size:20px;} #stats .wave{color:#7fd0ff;} #stats .obj{color:#7CFFB2;}
+
+  #objbar-wrap{position:absolute;top:14px;left:50%;transform:translateX(-50%);width:380px;text-align:center;}
+  #objbar-label{font-size:14px;color:#7CFFB2;margin-bottom:4px;}
+  #objbar-bg{height:14px;background:rgba(0,0,0,.55);border:1px solid #7CFFB2;border-radius:7px;overflow:hidden;}
+  #objbar-fill{height:100%;width:0%;background:linear-gradient(90deg,#36c46f,#7CFFB2);transition:width .1s;}
+
+  #weapon-info{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);text-align:center;font-size:16px;}
+  #weapon-info .wname{color:#fff;} #weapon-info .wammo{color:#ffd45d;font-size:22px;} #weapon-info .warmor{color:#9fbfff;font-size:12px;}
+  #weapon-info .wslots{font-size:13px;margin-top:4px;color:#888;}
+  #weapon-info .wslots .on{color:#ffd45d;font-weight:700;}
+  #weapon-info .wslots .empty{color:#666;}
+
+  #hint{position:absolute;bottom:14px;right:14px;text-align:right;font-size:13px;line-height:1.6;color:#cfcfcf;}
+  #hint .k{color:#9fe0ff;}
+  #log{position:absolute;bottom:64px;left:14px;font-size:13px;line-height:1.5;max-width:420px;}
+
+  /* 구매 UI — 게임을 가리지 않도록 박스만 표시(배경 클릭은 캔버스로 통과) */
+  #buyMenu{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:8;pointer-events:none;}
+  #buyMenu .box{pointer-events:auto;background:rgba(18,20,26,.96);border:2px solid #ffd45d;border-radius:14px;
+                padding:24px 28px;min-width:460px;box-shadow:0 20px 60px rgba(0,0,0,.6);}
+  #buyMenu h2{color:#ffd45d;font-size:1.5rem;margin-bottom:4px;}
+  #buyMenu .sub{color:#9f9f9f;font-size:.85rem;margin-bottom:16px;}
+  #buyMenu .item{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;margin:7px 0;
+                 border-radius:8px;background:rgba(255,255,255,.05);font-size:1rem;color:#eee;}
+  #buyMenu .item .key{display:inline-block;width:26px;height:26px;line-height:26px;text-align:center;border-radius:5px;
+                      background:#ffd45d;color:#111;font-weight:700;margin-right:10px;}
+  #buyMenu .item .name{flex:1;text-align:left;}
+  #buyMenu .item .spec{color:#9fbfff;font-size:.78rem;margin-right:14px;}
+  #buyMenu .item .cost{color:#ffd45d;font-weight:700;min-width:70px;text-align:right;}
+  #buyMenu .item.cant{opacity:.45;}
+  #buyMenu .foot{margin-top:14px;color:#9f9f9f;font-size:.82rem;text-align:center;}
+
+  #overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+           background:rgba(5,5,10,.9);color:#fff;text-align:center;z-index:10;padding:20px;}
+  #overlay h1{font-size:2.8rem;letter-spacing:3px;margin-bottom:4px;
+              background:linear-gradient(90deg,#ff8a3b,#ffd45d);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+  #overlay .tagline{font-size:.95rem;opacity:.75;margin-bottom:20px;font-style:italic;}
+  #overlay .panel{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;
+                  padding:18px 24px;max-width:600px;text-align:left;font-size:.9rem;line-height:1.7;}
+  #overlay .panel b{color:#ffd45d;} #overlay .key{color:#9fe0ff;font-weight:700;}
+  #overlay button{margin-top:22px;padding:14px 40px;font-size:1.15rem;font-weight:700;border:none;border-radius:8px;
+                  cursor:pointer;background:#e23b3b;color:#fff;transition:.15s;}
+  #overlay button:hover{background:#ff5151;transform:scale(1.05);}
+  .hidden{display:none !important;}
+  #damage{position:fixed;inset:0;pointer-events:none;z-index:5;
+          background:radial-gradient(circle,transparent 38%,rgba(255,0,0,.55) 100%);opacity:0;transition:opacity .12s;}
+  #toast{position:fixed;top:58px;left:50%;transform:translateX(-50%);z-index:6;color:#ffd45d;font-size:1.4rem;
+         font-weight:700;text-shadow:0 0 8px #000;opacity:0;transition:opacity .2s;pointer-events:none;text-align:center;}
+</style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div id="stats">
+      <div class="hp">❤ 체력 <span id="hpVal">100</span></div>
+      <div class="credit">💰 <span id="creditVal">0</span> C</div>
+      <div class="wave">⚔️ 전장 <span id="waveVal">-</span></div>
+      <div class="obj">🎯 목표 <span id="objVal">0/0</span></div>
+      <div style="color:#ff9d3a">📡 신호기 <span id="beaconVal">0</span></div>
+      <div style="color:#ff7a7a;font-size:13px">⏱️ 재증원 쿨 <span id="cdVal">-</span></div>
+    </div>
+    <div id="objbar-wrap">
+      <div id="objbar-label">목표를 수행하세요</div>
+      <div id="objbar-bg"><div id="objbar-fill"></div></div>
+    </div>
+    <div id="weapon-info">
+      <div class="wname" id="wName">돌격소총</div>
+      <div class="wammo" id="wAmmo">30 / ∞</div>
+      <div class="warmor" id="wArmor">관통: 경장갑</div>
+      <div class="wslots" id="wSlots"></div>
+    </div>
+    <div id="hint">
+      <div><span class="k">WASD</span> 이동 · <span class="k">마우스</span> 조준 · <span class="k">클릭</span> 사격 · <span class="k">R</span> 재장전</div>
+      <div><span class="k">1·2·3</span> 슬롯 · <span class="k">F</span> 신호기 들기(클릭=투척) · <span class="k">Q</span> 순환 · <span class="k">B</span> 구매 · <span class="k">E</span> 탈출</div>
+    </div>
+    <div id="log"></div>
+  </div>
+
+  <div id="damage"></div>
+  <div id="toast"></div>
+
+  <div id="buyMenu" class="hidden">
+    <div class="box">
+      <h2 id="buyTitle">📦 전장 배송 카탈로그</h2>
+      <div class="sub" id="buySub">구매 분류를 선택하세요. (게임은 멈추지 않습니다)</div>
+      <div id="buyList"></div>
+      <div class="foot">[Backspace] 뒤로 · [B/ESC] 닫기 · 보유 <span id="buyCredits">0</span> C</div>
+    </div>
+  </div>
+
+  <div id="overlay">
+    <h1>DELIVERY TO DIE</h1>
+    <div class="tagline">— 화력을 소비하며 전선을 유지하는 협동 PvE 익스트랙션 (TPS 프로토타입) —</div>
+    <div class="panel">
+      <div><b>임무:</b> 넓은 전장에 흩어진 <b>목표(최소 10개)</b> 중 원하는 만큼 수행하고, 🚁 <b>탈출 지점</b>에서 로켓을 호출해 빠져나가라.</div>
+      <div style="margin-top:8px"><b>탈출:</b> 탈출 지점에서 <span class="key">E</span>로 로켓 호출 → 강하한 로켓 탑승 구역에서 <b>30초</b> 버티면 탈출 성공.</div>
+      <div style="margin-top:8px"><b>3개 슬롯:</b> <span class="key">1</span> 기본 무기(돌격소총/샷건/저격총) · <span class="key">2</span> 화력(구매) · <span class="key">3</span> 투척/설치(수류탄·센트리).</div>
+      <div style="margin-top:8px"><b>구매:</b> <span class="key">B</span> → ①기본 무기 / ②화력 분류 선택 → 번호로 구매 → 캡슐 투하 → 밟아서 장착.</div>
+      <div style="margin-top:8px"><b>적:</b> 월드에 <b>수비대·순찰대</b>가 깔려 있다. 교전이 길어지면 적이 <b>신호탄</b>을 쏘고 🚁<b>드랍쉽</b>이 증원을 투하한다 — 드랍 전에 <b>중장갑↑ 무기</b>로 격추하면 증원을 막을 수 있다.</div>
+      <div style="margin-top:8px"><b>자동 포탑(슬롯3):</b> <span class="key">3</span>으로 자동 포탑 선택 후 <span class="key">1</span>기관총 <span class="key">2</span>로켓 <span class="key">3</span>화염 종류 선택 → 클릭 설치.</div>
+      <div style="margin-top:8px"><b>장갑 대응:</b> 중장갑 개체엔 저격총/유탄/레일건이 필요하다. (프로토타입 — 자금 넉넉히 지급)</div>
+    </div>
+    <button id="startBtn">출격</button>
+  </div>
+
+<script>
+"use strict";
+//==================================================================
+//  DELIVERY TO DIE — 탑다운 3인칭(TPS) 프로토타입  (Vanilla JS, 외부 라이브러리 없음)
+//==================================================================
+
+const WORLD={ w:13400, h:10000 }; const WALL=40;
+const START={ x:320, y:WORLD.h-280 };
+const EXIT={ x:WORLD.w-220, y:220, r:78 };
+function placeExit(){   // 매 게임 랜덤 (시작점에서 충분히 멀게)
+  let x,y,t=0; do{ x=WALL+500+Math.random()*(WORLD.w-WALL*2-1000); y=WALL+500+Math.random()*(WORLD.h-WALL*2-1000); t++; }
+  while(Math.hypot(x-START.x,y-START.y)<WORLD.w*0.42 && t<300);
+  EXIT.x=x; EXIT.y=y;
+}
+
+function dist(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+
+//---------------- 목표(미션) — 12개 ----------------
+const OBJ_NAMES=["발전기 복구","자원 컨테이너 회수","통신 타워 재가동","탄약고 확보","연료 펌프 가동",
+  "데이터 코어 회수","방어 터렛 수리","구호 물자 회수","관제 안테나 정렬","지하 벙커 개방","위성 링크 복구","보급 드론 회수"];
+const OBJ_HOLD=6;   // 목표 1개 완료에 필요한 점유 시간(초)
+let objectives=[];
+function makeObjectives(){   // 매 게임 랜덤 배치 (서로/시작/탈출과 충분히 이격)
+  objectives=[]; const N=15, minD=2200; let tries=0;
+  while(objectives.length<N && tries<4000){ tries++;
+    const x=WALL+800+Math.random()*(WORLD.w-WALL*2-1600), y=WALL+800+Math.random()*(WORLD.h-WALL*2-1600);
+    if(Math.hypot(x-START.x,y-START.y)<2200) continue;
+    if(Math.hypot(x-EXIT.x,y-EXIT.y)<1800) continue;
+    let ok=true; for(const o of objectives) if(Math.hypot(x-o.x,y-o.y)<minD){ ok=false; break; }
+    if(ok) objectives.push({x,y,r:58,prog:0,done:false,name:OBJ_NAMES[objectives.length%OBJ_NAMES.length],fort:false});
+  }
+}
+makeObjectives();
+
+//---------------- 엄폐물 — 넓은 맵에 결정적으로 흩뿌림 ----------------
+let COVERS=[];
+function genCovers(){   // 매 게임 랜덤 엄폐물 (목표/시작/탈출 근처는 비움)
+  COVERS=[];
+  const count=Math.min(420, Math.round(WORLD.w*WORLD.h/360000));
+  for(let i=0;i<count;i++){ COVERS.push({x:WALL+Math.random()*(WORLD.w-WALL*2-160),y:WALL+Math.random()*(WORLD.h-WALL*2-160),w:70+Math.random()*130,h:70+Math.random()*130}); }
+  const clears=(c,px,py,pad)=> !(px>c.x-pad && px<c.x+c.w+pad && py>c.y-pad && py<c.y+c.h+pad);
+  COVERS=COVERS.filter(c=>{
+    if(!clears(c,START.x,START.y,150)) return false;
+    if(!clears(c,EXIT.x,EXIT.y,150)) return false;
+    for(const o of objectives) if(!clears(c,o.x,o.y,150)) return false;
+    return true;
+  });
+}
+const FORT_S=900;   // 요새 반경 (기존 205의 약 4.4배 → 면적 ~20배급 대형 요새)
+function buildForts(){   // 일부 목표를 대형 요새화 + 서플라이 디폿
+  depots=[];
+  for(let i=0;i<objectives.length;i++){ const o=objectives[i]; o.fort=(i%4===0); if(!o.fort) continue;
+    const s=FORT_S, th=44;
+    COVERS.push({x:o.x-s,y:o.y-s,w:s*2,h:th});               // 북벽
+    COVERS.push({x:o.x-s,y:o.y+s-th,w:s*2,h:th});            // 남벽
+    COVERS.push({x:o.x+s-th,y:o.y-s,w:th,h:s*2});            // 동벽
+    COVERS.push({x:o.x-s,y:o.y-s,w:th,h:s*0.65});            // 서벽-상 (가운데 개방)
+    COVERS.push({x:o.x-s,y:o.y+s*0.35,w:th,h:s*0.65});       // 서벽-하
+    depots.push({x:o.x+s*0.4,y:o.y-s*0.4,r:34,hp:380,maxhp:380,spawnCD:3});  // 서플라이 디폿
+  }
+}
+
+//---------------- 무기 정의 ----------------
+//  cat:'basic'(기본·예비탄 무한) | 'power'(화력·제한 예비탄)
+//  탄창(mag) + 재장전(reload) + 스프레드/반동 시스템.
+const ARMOR_NAME=["경장갑","일반 장갑","중장갑","대전차 장갑"];
+// spreadBase: 서 있을 때 기본 오차각 · spreadMove: 이동 시 가산 · spreadShot: 발당 증가 · spreadMax: 한계
+// recoilV: 발당 수직(에임방향) 반동(px) · recoilH: 발당 좌우 반동(px)  (이동 중이면 더 커짐)
+// range = 탄환 사거리(월드 단위). 미션 간 거리(~1000+) 대비 짧게 설정해 맵 끝 적까지 닿지 않게 함.
+const WEAPONS=[
+  // 기본 무기
+  {id:"ar",name:"돌격소총",cat:"basic",dmg:7,  pen:0,delay:0.08,magSize:30,reload:1.8,bspd:920, range:520, cost:300,
+    spreadBase:0.010,spreadMove:0.060,spreadShot:0.013,spreadMax:0.18,recoilV:6, recoilH:4, color:"#e8e85a"},
+  {id:"sg",name:"샷건",    cat:"basic",dmg:5,  pen:0,delay:0.5, magSize:8, reload:2.2,bspd:780, range:300, cost:700, pellets:12,
+    spreadBase:0.16, spreadMove:0.05, spreadShot:0.02, spreadMax:0.30,recoilV:16,recoilH:9, color:"#ff9d3a"},
+  {id:"sr",name:"저격총",  cat:"basic",dmg:90, pen:2,delay:1.5, magSize:10,reload:2.6,bspd:2300,range:1150,cost:1200,
+    spreadBase:0.0,  spreadMove:0.030,spreadShot:0.0,  spreadMax:0.05,recoilV:22,recoilH:3, color:"#9fe0ff"},
+  // 화력(구매)
+  {id:"mg",name:"중기관총",cat:"power",dmg:8,  pen:1,delay:0.05,magSize:50,reserveMax:200,reload:2.4,bspd:960, range:560, cost:800,
+    spreadBase:0.030,spreadMove:0.070,spreadShot:0.010,spreadMax:0.21,recoilV:5, recoilH:5, color:"#ff6a3a"},
+  {id:"gl",name:"유탄발사기",cat:"power",dmg:34,pen:2,delay:0.7, magSize:6, reserveMax:18, reload:2.6,bspd:560, range:700, cost:1100,splash:90,lob:true,
+    spreadBase:0.020,spreadMove:0.040,spreadShot:0.010,spreadMax:0.10,recoilV:11,recoilH:4, color:"#ff3a3a"},
+  {id:"rg",name:"레일건",  cat:"power",dmg:130,pen:3,delay:1.2, magSize:3, reserveMax:9,  reload:2.8,bspd:1950,range:1250,cost:1600,pierce:true,
+    spreadBase:0.0,  spreadMove:0.020,spreadShot:0.0,  spreadMax:0.04,recoilV:18,recoilH:2, color:"#7fd0ff"},
+];
+const BASIC_IDS=["ar","sg","sr"], POWER_IDS=["mg","gl","rg"];
+function widx(id){ return WEAPONS.findIndex(w=>w.id===id); }
+function initWeapon(w){ if(w.cat==="basic"){ w.mag=w.magSize; w.reserve=Infinity; } else { w.mag=0; w.reserve=0; } w.reloading=0; }
+function initAllWeapons(){ WEAPONS.forEach(initWeapon); }
+
+//---------------- 투척/설치 장비(슬롯3) ----------------
+//  마지막 항목 '자동 포탑'은 1/2/3 으로 종류를 고른다.
+const TURRET_VARIANTS=[
+  {name:"기관총 포탑", pen:1, fireDelay:0.06, range:380, dmg:8,            cost:500,  color:"#ff6a3a"},        // 스트라잼 중기관총급
+  {name:"로켓 포탑",   pen:3, fireDelay:0.5,  range:560, dmg:120,splash:95, cost:1200, color:"#ff3a3a"},        // 대전차 관통·미사일 광역
+  {name:"화염 포탑",   pen:3, fireDelay:0.1,  range:180, cone:0.32, burn:5, cost:900,  color:"#ff9d2e", flame:true}, // 단거리 원뿔·화상
+];
+const TACTICALS=[
+  {name:"수류탄",   kind:"throw",  charges:4, max:4, regen:7,  rt:0, color:"#7CFFB2", dmg:90, radius:95},
+  {name:"자동 포탑", kind:"turret", charges:2, max:2, regen:16, rt:0, color:"#ff9d3a", life:18},
+];
+
+//---------------- 폭격 스트라타젬 (구매 → 1회용 신호기 → F로 투척) ----------------
+//  신의 지팡이 = "Rods from God"(Project Thor): 궤도 텅스텐 막대 운동에너지 강하
+const BOMB_TYPES=[
+  {name:"고폭탄 폭격", pen:1, color:"#ff9d3a", delay:3, dur:10, interval:0.28, area:250, blast:62, dmg:42},
+  {name:"신의 지팡이", pen:3, color:"#bfe6ff", delay:3, search:180, dmg:2400, splash:80},
+  {name:"네이팜 폭격", pen:1, color:"#ff5a2e", delay:3, dur:6,  interval:0.36, area:250, blast:56, dmg:30, fireR:72, fireLife:30},
+];
+const BOMB_COST=[800,1500,1100];
+
+//---------------- 적 ----------------
+// rmin~rmax: 개체마다 크기를 랜덤으로. 중장갑(heavy)은 미션 크기(r≈58)급
+const ETYPE={
+  infected:{name:"감염체",   hp:24, armor:0, speed:95, reward:40, melee:18, rmin:11,rmax:20, ranged:false,color:"#9b3fdf"},
+  mech:    {name:"기계화병", hp:55, armor:1, speed:60, reward:80, melee:0,  rmin:14,rmax:23, ranged:true, color:"#c0c0c0"},
+  heavy:   {name:"중장갑개체",hp:340,armor:2, speed:42, reward:240,melee:34, rmin:48,rmax:64, ranged:false,color:"#caa23b"},
+};
+
+//---------------- 상태 ----------------
+const player={x:START.x,y:START.y,hp:100,credits:8000,r:15,speed:200,aim:0};
+const START_CREDITS=8000;       // 프로토타입: 자금 넉넉히
+let slots=[ {type:"gun",wi:widx("ar")}, {type:"gun",wi:null}, {type:"tac",ti:0} ];  // 1=기본,2=화력,3=투척/설치
+let activeSlot=0, fireCD=0, muzzle=0, firing=false, throwCD=0;
+let spreadCur=0, recoilV=0, recoilH=0, recoilSign=1, playerMoving=false;
+function slotUsable(s){ const sl=slots[s]; return sl.type!=="gun" || sl.wi!==null; }
+function setSlot(s){ if(!slotUsable(s)) return; activeSlot=s; spreadCur=0; recoilV=0; recoilH=0; }
+function swapSlot(){ for(let i=1;i<=3;i++){ const s=(activeSlot+i)%3; if(slotUsable(s)){ setSlot(s); return; } } }
+function activeGun(){ const sl=slots[activeSlot]; return (sl.type==="gun"&&sl.wi!=null)?WEAPONS[sl.wi]:null; }
+
+let enemies=[], bullets=[], pods=[], craters=[], grenades=[], turrets=[], missiles=[], dropships=[];
+let beacons=[], beaconThrows=[], bombardments=[], firePatches=[], beams=[], fallingBombs=[];  // 스트라타젬 신호기
+let heldBeacon=-1;            // 현재 손에 든 신호기 인덱스(-1=없음)
+let particles=[], depots=[];  // 피격 FX / 서플라이 디폿
+let patrolWP=[];              // 순찰 그룹별 목적지
+let turretVariant=0;          // 0=기관총 1=로켓 2=화염
+let flare=null, flareTimer=-1, reinforceActive=false, reinforceCD=0, kills=0;  // 신호탄→드랍쉽 증원 + 글로벌 쿨타임
+let rocket={ state:"idle", z:0, timer:30 };   // idle → incoming → landed → (win)
+let started=false, running=false, buyOpen=false, buyStage="main";
+
+const keys={}; let mouse={x:0,y:0}; let cam={x:0,y:0};
+
+//---------------- DOM ----------------
+const canvas=document.getElementById("game"),ctx=canvas.getContext("2d");
+const overlay=document.getElementById("overlay"),startBtn=document.getElementById("startBtn");
+const buyMenu=document.getElementById("buyMenu"),buyList=document.getElementById("buyList"),buyCredits=document.getElementById("buyCredits");
+const buyTitle=document.getElementById("buyTitle"),buySub=document.getElementById("buySub");
+const damageEl=document.getElementById("damage"),toastEl=document.getElementById("toast");
+const hpVal=document.getElementById("hpVal"),creditVal=document.getElementById("creditVal"),waveVal=document.getElementById("waveVal"),objVal=document.getElementById("objVal");
+const objLabel=document.getElementById("objbar-label"),objFill=document.getElementById("objbar-fill");
+const wName=document.getElementById("wName"),wAmmo=document.getElementById("wAmmo"),wArmor=document.getElementById("wArmor"),wSlots=document.getElementById("wSlots");
+const beaconVal=document.getElementById("beaconVal"),cdVal=document.getElementById("cdVal");
+const logEl=document.getElementById("log");
+
+let W=0,H=0;
+function resize(){W=canvas.width=innerWidth;H=canvas.height=innerHeight;}
+addEventListener("resize",resize); resize();
+
+//---------------- 입력 ----------------
+addEventListener("keydown",e=>{
+  keys[e.code]=true;
+  if(e.code==="KeyB" && running){ toggleBuy(); e.preventDefault(); return; }
+  if(e.code==="Escape"){ if(buyOpen) toggleBuy(); else pause(); return; }
+  if(running && buyOpen){
+    if(e.code==="Backspace"){ buyStage="main"; renderBuy(); e.preventDefault(); return; }
+    if(buyStage==="main"){
+      if(e.code==="Digit1"){ buyStage="basic"; renderBuy(); }
+      if(e.code==="Digit2"){ buyStage="power"; renderBuy(); }
+      if(e.code==="Digit3"){ buyStage="turret"; renderBuy(); }
+      if(e.code==="Digit4"){ buyStage="bomb"; renderBuy(); }
+    } else if(buyStage==="turret"){
+      if(e.code==="Digit1") buyTurret(0);
+      if(e.code==="Digit2") buyTurret(1);
+      if(e.code==="Digit3") buyTurret(2);
+    } else if(buyStage==="bomb"){
+      if(e.code==="Digit1") buyBomb(0);
+      if(e.code==="Digit2") buyBomb(1);
+      if(e.code==="Digit3") buyBomb(2);
+    } else {
+      const ids = buyStage==="basic"?BASIC_IDS:POWER_IDS;
+      if(e.code==="Digit1") buyWeapon(widx(ids[0]));
+      if(e.code==="Digit2") buyWeapon(widx(ids[1]));
+      if(e.code==="Digit3") buyWeapon(widx(ids[2]));
+    }
+    return;
+  }
+  if(running && !buyOpen){
+    // 신호기를 들고 있을 때 1·2·3 → 신호기 집어넣고 무기 슬롯으로 복귀(사용 안 함)
+    if(heldBeacon>=0 && (e.code==="Digit1"||e.code==="Digit2"||e.code==="Digit3")) heldBeacon=-1;
+    const onTurret = (activeSlot===2 && TACTICALS[slots[2].ti].kind==="turret");
+    if(e.code==="Digit1"){ if(onTurret) turretVariant=0; else setSlot(0); }
+    if(e.code==="Digit2"){ if(onTurret) turretVariant=1; else setSlot(1); }
+    if(e.code==="Digit3"){ if(onTurret) turretVariant=2;
+      else if(activeSlot===2) slots[2].ti=(slots[2].ti+1)%TACTICALS.length;
+      else { setSlot(2); slots[2].ti=0; } }   // 다른 슬롯에서 3 → 슬롯3(수류탄). 재누름→자동포탑
+    if(e.code==="KeyQ"){ heldBeacon=-1; swapSlot(); }
+    if(e.code==="KeyR"){ const w=activeGun(); if(w) startReload(w); }
+    if(e.code==="KeyF"){ if(beacons.length===0) pushLog("📡 보유한 신호기가 없다 (구매: B)","#ff8a8a"); else heldBeacon=(heldBeacon+1)%beacons.length; }  // 신호기 들기/순환
+    if(e.code==="KeyE") callRocket();
+  }
+});
+addEventListener("keyup",e=>{keys[e.code]=false;});
+canvas.addEventListener("mousemove",e=>{ const r=canvas.getBoundingClientRect(); mouse.x=e.clientX-r.left; mouse.y=e.clientY-r.top; });
+canvas.addEventListener("mousedown",e=>{ if(!running||buyOpen||e.button!==0) return;
+  if(heldBeacon>=0){ throwHeldBeacon(); return; }                       // 신호기 들고 있으면 투척
+  if(slots[activeSlot].type==="gun"){ firing=true; shoot(); } else useTactical(); });
+addEventListener("mouseup",e=>{ if(e.button===0) firing=false; });
+canvas.addEventListener("mouseleave",()=>{ firing=false; });
+addEventListener("blur",()=>{ firing=false; });
+canvas.addEventListener("wheel",e=>{ if(running && !buyOpen){ swapSlot(); e.preventDefault(); } },{passive:false});
+startBtn.addEventListener("click",startOrResume);
+
+function startOrResume(){
+  if(rocket.state==="win"||player.hp<=0||!started) resetGame();
+  overlay.classList.add("hidden"); running=true; lastTime=performance.now(); requestAnimationFrame(loop);
+}
+function pause(){ if(!running) return; running=false; showOverlay("⏸️ 일시정지","작전을 잠시 멈췄습니다.","작전 재개",false); }
+function resetGame(){
+  player.x=START.x; player.y=START.y; player.hp=100; player.credits=START_CREDITS;
+  initAllWeapons();
+  slots=[ {type:"gun",wi:widx("ar")}, {type:"gun",wi:null}, {type:"tac",ti:0} ]; activeSlot=0; firing=false;
+  spreadCur=0; recoilV=0; recoilH=0;
+  turretVariant=0; TACTICALS.forEach(t=>{ t.charges=t.max; t.rt=0; });
+  enemies=[]; bullets=[]; pods=[]; craters=[]; grenades=[]; turrets=[]; missiles=[]; dropships=[];
+  beacons=[]; beaconThrows=[]; bombardments=[]; firePatches=[]; beams=[]; fallingBombs=[]; heldBeacon=-1;
+  particles=[]; flare=null; flareTimer=-1; reinforceActive=false; reinforceCD=0; kills=0;
+  rocket={state:"idle",z:0,timer:30}; logLines=[];
+  placeExit(); makeObjectives(); genCovers(); buildForts(); populateWorld(); started=true;
+}
+function showOverlay(t,m,b,hidePanel){
+  overlay.querySelector("h1").textContent=t; overlay.querySelector(".tagline").textContent=m;
+  overlay.querySelector(".panel").style.display=hidePanel?"none":"block";
+  startBtn.textContent=b; overlay.classList.remove("hidden");
+}
+
+//---------------- 로그 / 토스트 ----------------
+let logLines=[];
+function pushLog(t,c){ logLines.unshift({t,c,life:4}); if(logLines.length>6) logLines.pop(); }
+let toastTimer=0;
+function toast(t){ toastEl.textContent=t; toastEl.style.opacity="1"; toastTimer=2; }
+
+//---------------- 구매 UI (2단계) ----------------
+function toggleBuy(){ buyOpen=!buyOpen; if(buyOpen){ buyStage="main"; renderBuy(); buyMenu.classList.remove("hidden"); } else buyMenu.classList.add("hidden"); }
+function renderBuy(){
+  buyCredits.textContent=Math.floor(player.credits);
+  if(buyStage==="main"){
+    buyTitle.textContent="📦 전장 배송 카탈로그";
+    buySub.textContent="구매 분류를 선택하세요. (게임은 멈추지 않습니다)";
+    buyList.innerHTML=
+      `<div class="item"><span><span class="key">1</span><span class="name">기본 무기 구매</span></span><span class="spec">돌격소총 · 샷건 · 저격총</span><span class="cost">▶</span></div>`+
+      `<div class="item"><span><span class="key">2</span><span class="name">화력 구매</span></span><span class="spec">중기관총 · 유탄 · 레일건</span><span class="cost">▶</span></div>`+
+      `<div class="item"><span><span class="key">3</span><span class="name">포탑 (설치)</span></span><span class="spec">기관총 · 로켓 · 화염</span><span class="cost">▶</span></div>`+
+      `<div class="item"><span><span class="key">4</span><span class="name">폭격 (신호기)</span></span><span class="spec">고폭탄 · 신의 지팡이 · 네이팜</span><span class="cost">▶</span></div>`;
+  } else if(buyStage==="bomb"){
+    buyTitle.textContent="📡 폭격 신호기 구매";
+    buySub.textContent="구매 시 1회용 신호기 획득 → [F]로 수류탄처럼 투척. [Backspace] 뒤로";
+    const specs=["3초 후 10초간 광역 융단폭격 · 일반 장갑","최대 표적에 운동에너지 강하 · 대전차 관통","융단폭격 + 30초 화염 지대 · 일반 장갑"];
+    buyList.innerHTML=BOMB_TYPES.map((b,i)=>{
+      const cant=player.credits<BOMB_COST[i]?"cant":"";
+      return `<div class="item ${cant}"><span><span class="key">${i+1}</span><span class="name">${b.name}</span></span>
+              <span class="spec">${specs[i]}</span><span class="cost">${BOMB_COST[i]} C</span></div>`;
+    }).join("");
+  } else if(buyStage==="turret"){
+    buyTitle.textContent="🛡️ 자동 포탑 구매";
+    buySub.textContent="구매 시 해당 포탑 충전 보급 + 슬롯3 장착. [Backspace] 뒤로";
+    buyList.innerHTML=TURRET_VARIANTS.map((v,i)=>{
+      const cant=player.credits<v.cost?"cant":"";
+      const spec=v.flame?`단거리 원뿔·화상 · ${ARMOR_NAME[v.pen]}`:(v.splash?`미사일 광역 · ${ARMOR_NAME[v.pen]}`:`자동 사격 · ${ARMOR_NAME[v.pen]}`);
+      return `<div class="item ${cant}"><span><span class="key">${i+1}</span><span class="name">${v.name}</span></span>
+              <span class="spec">${spec}</span><span class="cost">${v.cost} C</span></div>`;
+    }).join("");
+  } else {
+    const ids = buyStage==="basic"?BASIC_IDS:POWER_IDS;
+    buyTitle.textContent = buyStage==="basic"?"🔫 기본 무기 구매":"💥 화력 구매";
+    buySub.textContent="번호로 구매 → 캡슐 투하 → 밟아서 장착. [Backspace] 뒤로";
+    buyList.innerHTML=ids.map((id,i)=>{
+      const w=WEAPONS[widx(id)]; const cant=player.credits<w.cost?"cant":"";
+      const spec = w.cat==="basic"
+        ? `장탄 ${w.magSize} · ${w.delay}s · ${ARMOR_NAME[w.pen]}`
+        : `장탄 ${w.magSize}+예비${w.reserveMax} · ${ARMOR_NAME[w.pen]}`;
+      return `<div class="item ${cant}"><span><span class="key">${i+1}</span><span class="name">${w.name}</span></span>
+              <span class="spec">${spec}</span><span class="cost">${w.cost} C</span></div>`;
+    }).join("");
+  }
+}
+function buyWeapon(idx){
+  const w=WEAPONS[idx];
+  if(player.credits<w.cost){ pushLog(`⚠️ 자금 부족 — ${w.name} (${w.cost}C 필요)`,"#ff8a8a"); renderBuy(); return; }
+  player.credits-=w.cost;
+  const ang=Math.random()*Math.PI*2, d=70+Math.random()*60;
+  pods.push({ x:player.x+Math.cos(ang)*d, y:player.y+Math.sin(ang)*d, z:760, wi:idx, landed:false });
+  pushLog(`📦 ${w.name} 주문! 캡슐 투하 중... (-${w.cost}C)`, w.color); toast(`📦 ${w.name} 투하!`);
+  toggleBuy();   // 구매 완료 → 구매창 자동 닫힘
+}
+function buyTurret(v){
+  const t=TURRET_VARIANTS[v];
+  if(player.credits<t.cost){ pushLog(`⚠️ 자금 부족 — ${t.name} (${t.cost}C 필요)`,"#ff8a8a"); renderBuy(); return; }
+  player.credits-=t.cost; beacons.push({cat:"turret",variant:v,color:t.color,name:t.name}); heldBeacon=beacons.length-1;
+  pushLog(`📡 ${t.name} 신호기 획득! 던져서 설치 · 클릭=투척 (-${t.cost}C)`,t.color); toast(`📡 ${t.name} 신호기!`);
+  toggleBuy();   // 구매 완료 → 구매창 자동 닫힘(들고 있는 상태로 시작)
+}
+function buyBomb(v){
+  const cost=BOMB_COST[v], b=BOMB_TYPES[v];
+  if(player.credits<cost){ pushLog(`⚠️ 자금 부족 — ${b.name} (${cost}C 필요)`,"#ff8a8a"); renderBuy(); return; }
+  player.credits-=cost; beacons.push({cat:"bomb",variant:v,color:b.color,name:b.name}); heldBeacon=beacons.length-1;
+  pushLog(`📡 ${b.name} 신호기 획득! 던져서 폭격 · 클릭=투척 (-${cost}C)`,b.color); toast(`📡 ${b.name} 신호기!`);
+  toggleBuy();   // 구매 완료 → 구매창 자동 닫힘(들고 있는 상태로 시작)
+}
+
+//---------------- 좌표 / 충돌 ----------------
+function worldMouse(){ return { x:mouse.x+cam.x, y:mouse.y+cam.y }; }
+// 크로스헤어 = 마우스 위치 + 반동 오프셋(에임방향=수직, 수직방향=좌우)
+function crosshairScreen(){ const ax=Math.cos(player.aim),ay=Math.sin(player.aim),px=-ay,py=ax;
+  return { x:mouse.x+ax*recoilV+px*recoilH, y:mouse.y+ay*recoilV+py*recoilH }; }
+function crosshairWorld(){ const c=crosshairScreen(); return { x:c.x+cam.x, y:c.y+cam.y }; }
+function circleRect(cx,cy,cr,rx,ry,rw,rh){ const nx=Math.max(rx,Math.min(cx,rx+rw)),ny=Math.max(ry,Math.min(cy,ry+rh)); return (cx-nx)**2+(cy-ny)**2<cr*cr; }
+function resolveCovers(o){
+  o.x=Math.max(WALL+o.r,Math.min(WORLD.w-WALL-o.r,o.x)); o.y=Math.max(WALL+o.r,Math.min(WORLD.h-WALL-o.r,o.y));
+  for(const c of COVERS){ if(circleRect(o.x,o.y,o.r,c.x,c.y,c.w,c.h)){
+    const nx=Math.max(c.x,Math.min(o.x,c.x+c.w)),ny=Math.max(c.y,Math.min(o.y,c.y+c.h));
+    let dx=o.x-nx,dy=o.y-ny,d=Math.hypot(dx,dy)||0.001; const push=o.r-d; o.x+=dx/d*push; o.y+=dy/d*push; } }
+}
+function bulletHitsCover(b){ if(b.x<WALL||b.x>WORLD.w-WALL||b.y<WALL||b.y>WORLD.h-WALL) return true;
+  for(const c of COVERS){ if(b.x>=c.x&&b.x<=c.x+c.w&&b.y>=c.y&&b.y<=c.y+c.h) return true; } return false; }
+function coverBetween(x0,y0,x1,y1){ const n=Math.ceil(Math.hypot(x1-x0,y1-y0)/12);
+  for(let i=1;i<n;i++){ const t=i/n,x=x0+(x1-x0)*t,y=y0+(y1-y0)*t; for(const c of COVERS) if(x>=c.x&&x<=c.x+c.w&&y>=c.y&&y<=c.y+c.h) return true; } return false; }
+
+//---------------- 사격 / 재장전 ----------------
+function startReload(w){
+  if(w.reloading>0 || w.mag>=w.magSize) return;
+  if(w.cat==="power" && w.reserve<=0) return;
+  w.reloading=w.reload; pushLog(`🔄 ${w.name} 재장전...`,"#cccccc");
+}
+function updateReload(dt){
+  for(const w of WEAPONS){ if(w.reloading>0){ w.reloading-=dt; if(w.reloading<=0){ w.reloading=0;
+    if(w.cat==="basic"){ w.mag=w.magSize; }
+    else { const take=Math.min(w.magSize-w.mag,w.reserve); w.mag+=take; w.reserve-=take; } } } }
+}
+function shoot(){
+  const w=activeGun(); if(!w || w.reloading>0 || fireCD>0) return;
+  if(w.mag<=0){
+    if(w.cat==="power" && w.reserve<=0){ pushLog(`🔻 ${w.name} 탄약 소진 — 기본 무기로 복귀`,"#ff8a8a"); slots[1].wi=null; firing=false; setSlot(0); }
+    else startReload(w);
+    return;
+  }
+  fireCD=w.delay; muzzle=0.05; w.mag--;
+  const ch=crosshairWorld();
+  if(w.lob){   // 유탄발사기: 크로스헤어 위치로 곡사(포물선) → 착탄 폭발
+    const dd=Math.hypot(ch.x-player.x,ch.y-player.y), dur=Math.max(0.45,Math.min(1.15,dd/680));
+    grenades.push({sx:player.x,sy:player.y,x:player.x,y:player.y,tx:ch.x,ty:ch.y,t:0,dur,z:0,dmg:w.dmg,radius:w.splash,pen:w.pen,color:w.color});
+  } else {
+    // 발사 방향 = 플레이어→(반동 반영된 크로스헤어) + 스프레드 오차
+    const fireAim=Math.atan2(ch.y-player.y, ch.x-player.x);
+    const pellets=w.pellets||1, life=(w.range||720)/w.bspd;   // 사거리/속도 = 체공시간
+    for(let i=0;i<pellets;i++){
+      const a=fireAim+(Math.random()-0.5)*2*spreadCur;
+      bullets.push({x:player.x+Math.cos(a)*22,y:player.y+Math.sin(a)*22,
+        vx:Math.cos(a)*w.bspd,vy:Math.sin(a)*w.bspd,dmg:w.dmg,pen:w.pen,splash:w.splash||0,pierce:w.pierce||false,
+        life,fromPlayer:true,color:w.color,hits:[]});
+    }
+  }
+  // 스프레드 증가(한계까지)
+  spreadCur=Math.min(w.spreadMax, spreadCur+w.spreadShot);
+  // 반동: 이동 중이면 크게. 수직은 항상 바깥(에임)으로, 좌우는 번갈아
+  const mult=playerMoving?2.2:1;
+  recoilV=Math.min(150, recoilV + w.recoilV*mult);
+  recoilSign=-recoilSign;
+  recoilH += recoilSign*w.recoilH*mult*(0.6+Math.random()*0.8);
+  recoilH=Math.max(-90,Math.min(90,recoilH));
+  if(w.mag<=0) startReload(w);
+}
+function useTactical(){
+  const t=TACTICALS[slots[2].ti];
+  if(throwCD>0) return;
+  if(t.charges<=0){ pushLog(`⏳ ${t.name} 충전 중...`,"#ff8a8a"); return; }
+  throwCD=0.45; t.charges--;
+  if(t.kind==="throw"){
+    const wm=worldMouse(); let tx=wm.x,ty=wm.y; const a=player.aim,maxR=440;
+    const d=Math.hypot(tx-player.x,ty-player.y); if(d>maxR){ tx=player.x+Math.cos(a)*maxR; ty=player.y+Math.sin(a)*maxR; }
+    grenades.push({sx:player.x,sy:player.y,x:player.x,y:player.y,tx,ty,t:0,dur:0.65,z:0,dmg:t.dmg,radius:t.radius,pen:3,color:t.color});
+    pushLog(`💣 ${t.name} 투척!`,t.color);
+  } else {  // 자동 포탑 설치(현재 선택된 종류)
+    const v=TURRET_VARIANTS[turretVariant];
+    turrets.push({x:player.x+Math.cos(player.aim)*34,y:player.y+Math.sin(player.aim)*34,ang:player.aim,life:t.life,cd:0,active:false,
+      variant:turretVariant,fireDelay:v.fireDelay,dmg:v.dmg,pen:v.pen,range:v.range,splash:v.splash||0,
+      flame:v.flame||false,coneHalf:v.cone||0,burn:v.burn||0,color:v.color});
+    pushLog(`🛡️ ${v.name} 설치!`,v.color); toast(`🛡️ ${v.name} 설치!`);
+  }
+}
+function throwHeldBeacon(){
+  if(heldBeacon<0 || throwCD>0) return;
+  throwCD=0.45; const item=beacons.splice(heldBeacon,1)[0]; heldBeacon=-1;  // 수류탄과 동일하게 투척
+  const wm=worldMouse(); let tx=wm.x,ty=wm.y; const a=player.aim,maxR=520;
+  const d=Math.hypot(tx-player.x,ty-player.y); if(d>maxR){ tx=player.x+Math.cos(a)*maxR; ty=player.y+Math.sin(a)*maxR; }
+  beaconThrows.push({sx:player.x,sy:player.y,x:player.x,y:player.y,tx,ty,t:0,dur:0.7,z:0,cat:item.cat,variant:item.variant,color:item.color,landed:false});
+  pushLog(`📡 ${item.name} 신호기 투척!`,item.color);
+  setSlot(0);   // 사용 후 기본 무기(슬롯1)로 복귀
+}
+function deployTurretAt(x,y,v){
+  const vv=TURRET_VARIANTS[v];
+  turrets.push({x,y,ang:0,life:18,cd:0,active:false,variant:v,fireDelay:vv.fireDelay,dmg:vv.dmg,pen:vv.pen,range:vv.range,splash:vv.splash||0,flame:vv.flame||false,coneHalf:vv.cone||0,burn:vv.burn||0,color:vv.color});
+  pushLog(`🛡️ ${vv.name} 전개!`,vv.color); toast(`🛡️ ${vv.name} 전개!`);
+}
+function spawnBlood(x,y){ for(let i=0;i<7;i++){ const a=Math.random()*7,s=40+Math.random()*130;
+  particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:0.45,max:0.45,r:3+Math.random()*3,color:"#c41818",kind:"blood"}); } }
+function spawnRicochet(x,y){ for(let i=0;i<5;i++){ const a=Math.random()*7,s=130+Math.random()*200;
+  particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:0.22,max:0.22,r:1.5+Math.random()*1.5,color:"#ffe14d",kind:"spark"}); } }
+function updateParticles(dt){ for(const p of particles){ p.life-=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=0.88; p.vy*=0.88; } particles=particles.filter(p=>p.life>0); }
+function damageEnemy(e,dmg,pen){
+  if(!e.alive) return;
+  if(!e.aggro){ e.aggro=true; e.alerted=false; e.alertT=3; }   // 피격 시 전투 개시(3초 뒤 주변 전파)
+  const pierced = pen>=e.type.armor;
+  const eff = pierced ? dmg : dmg*0.08;
+  if(pierced) spawnBlood(e.x,e.y);                                   // 관통 → 피구름
+  else { spawnRicochet(e.x,e.y); if(e.bounce<=0){ e.bounce=0.5; pushLog(`🛡️ ${e.type.name}의 ${ARMOR_NAME[e.type.armor]}에 도탄!`,"#9fbfff"); } }  // 비관통 → 도탄
+  e.hp-=eff; e.hit=0.1;
+  if(e.hp<=0){ e.alive=false; kills++; player.credits+=e.type.reward; speedUpCooldown(1); pushLog(`💀 ${e.type.name} +${e.type.reward}C`,"#7CFFB2"); }
+}
+
+//---------------- 월드 적 배치 (수비대 + 순찰대) ----------------
+function spawnEnemy(kind,x,y,role,home,pg){
+  const t=ETYPE[kind]; const r=t.rmin+Math.random()*(t.rmax-t.rmin);   // 개체별 랜덤 크기
+  enemies.push({x,y,type:t,kind,hp:t.hp,r,alive:true,hit:0,bounce:0,fire:1+Math.random()*1.5,
+    role,home:home||{x,y},aggro:false,burn:0,burnTick:0,face:Math.random()*7,vis:340,fov:0.9,pg:(pg==null?null:pg)});
+}
+function repickWP(pg){ patrolWP[pg]={x:WALL+150+Math.random()*(WORLD.w-WALL*2-300),y:WALL+150+Math.random()*(WORLD.h-WALL*2-300)}; }
+function alertNearby(e){ for(const o of enemies){ if(o.alive && !o.aggro && Math.hypot(o.x-e.x,o.y-e.y)<240){ o.aggro=true; o.alerted=false; o.alertT=3; } } }  // 주변/동료 경보(이들도 3초 뒤 재전파)
+function populateWorld(){   // 경장갑(감염체) 위주 · 대규모 배치
+  // 미션 지역 수비대 (요새는 더 넓고 많음)
+  for(const o of objectives){
+    const n = o.fort ? (40+Math.floor(Math.random()*24)) : (8+Math.floor(Math.random()*5));
+    for(let i=0;i<n;i++){ let kind="infected"; const rr=Math.random(); if(rr>0.92) kind="mech"; if(rr>0.985) kind="heavy";
+      let px,py;
+      if(o.fort){ const a=Math.random()*7,d=Math.random()*FORT_S*0.78; px=o.x+Math.cos(a)*d; py=o.y+Math.sin(a)*d; }
+      else { const a=(i/n)*6.283+Math.random()*0.9, d=o.r+110+Math.random()*240; px=o.x+Math.cos(a)*d; py=o.y+Math.sin(a)*d; }  // 미션 외곽 링에 분산
+      spawnEnemy(kind,px,py,"guard",{x:px,y:py}); } }   // 자기 자리를 지킴(미션 중앙에 모이지 않음)
+  // 순찰대 — 그룹 단위로 뭉쳐 이동
+  patrolWP=[];
+  const groups=22;
+  for(let g=0; g<groups; g++){
+    let cx,cy; do{ cx=WALL+150+Math.random()*(WORLD.w-WALL*2-300); cy=WALL+150+Math.random()*(WORLD.h-WALL*2-300); } while(Math.hypot(cx-START.x,cy-START.y)<500);
+    repickWP(g);
+    const n=4+Math.floor(Math.random()*4);
+    for(let i=0;i<n;i++){ let kind="infected"; const r=Math.random(); if(r>0.90) kind="mech"; if(r>0.99) kind="heavy";
+      spawnEnemy(kind,cx+(Math.random()-0.5)*90,cy+(Math.random()-0.5)*90,"patrol",null,g); }
+  }
+}
+function fireEnemyShot(e,dx,dy){ const a=Math.atan2(dy,dx);
+  bullets.push({x:e.x,y:e.y,vx:Math.cos(a)*420,vy:Math.sin(a)*420,dmg:10,pen:0,splash:0,pierce:false,life:2,fromPlayer:false,color:"#ff7a2e",hits:[]}); }
+
+//---------------- 적 AI (어그로/수비/순찰 + 화상) ----------------
+function updateEnemies(dt){
+  const alive=enemies.filter(e=>e.alive);
+  // 순찰 그룹 중심
+  const gc={};
+  for(const e of alive){ if(e.role==="patrol" && e.pg!=null){ const c=gc[e.pg]||(gc[e.pg]={x:0,y:0,n:0}); c.x+=e.x;c.y+=e.y;c.n++; } }
+  for(const k in gc){ gc[k].x/=gc[k].n; gc[k].y/=gc[k].n; }
+  for(const e of alive){
+    if(e.hit>0)e.hit-=dt; if(e.bounce>0)e.bounce-=dt;
+    let speedMul=1;
+    if(e.burn>0){ e.burn-=dt; e.burnTick+=dt; if(e.burnTick>=0.5){ e.burnTick-=0.5; damageEnemy(e,6,3); } speedMul=0.5; if(!e.alive) continue; }
+    const dx=player.x-e.x,dy=player.y-e.y,d=Math.hypot(dx,dy)||1;
+    // 시야: 거리 + 정면 원뿔 + 시야 차단(엄폐물). 뒤/옆은 못 봄
+    if(!e.aggro && d<e.vis){ let ad=Math.atan2(dy,dx)-e.face; while(ad>Math.PI)ad-=2*Math.PI; while(ad<-Math.PI)ad+=2*Math.PI;
+      if(Math.abs(ad)<e.fov && !coverBetween(e.x,e.y,player.x,player.y)){ e.aggro=true; e.alerted=false; e.alertT=3; } }
+    if(e.aggro){
+      // 교전 시작 3초 뒤 근처 아군에게 전파 → 참전
+      if(!e.alerted){ e.alertT-=dt; if(e.alertT<=0){ alertNearby(e); e.alerted=true; } }
+      // 플레이어를 오래 놓치면 추격 포기 → 복귀
+      if(d>1000){ e.lost=(e.lost||0)+dt; if(e.lost>5){ e.aggro=false; e.lost=0; e.alerted=false; resolveCovers(e); continue; } } else e.lost=0;
+      e.face=Math.atan2(dy,dx);
+      let vx=dx/d,vy=dy/d;
+      for(const o of alive){ if(o===e) continue; const ox=e.x-o.x,oy=e.y-o.y,od=Math.hypot(ox,oy); if(od>0&&od<e.r+o.r+6){ vx+=ox/od*0.8; vy+=oy/od*0.8; } }
+      const vl=Math.hypot(vx,vy)||1;
+      if(e.type.ranged){
+        if(d>320){ e.x+=vx/vl*e.type.speed*speedMul*dt; e.y+=vy/vl*e.type.speed*speedMul*dt; }
+        e.fire-=dt; if(e.fire<=0 && d<520 && !coverBetween(e.x,e.y,player.x,player.y)){ e.fire=2.2; fireEnemyShot(e,dx,dy); }
+      } else {
+        if(d>e.r+player.r-2){ e.x+=vx/vl*e.type.speed*speedMul*dt; e.y+=vy/vl*e.type.speed*speedMul*dt; }
+        else { player.hp-=e.type.melee*dt; flashDamage(); }
+      }
+    } else if(e.role==="patrol" && e.pg!=null){  // 그룹 순찰
+      const c=gc[e.pg]; let wp=patrolWP[e.pg];
+      if(c && wp && Math.hypot(c.x-wp.x,c.y-wp.y)<70){ repickWP(e.pg); wp=patrolWP[e.pg]; }
+      let mvx=wp.x-e.x, mvy=wp.y-e.y;
+      if(c){ mvx+=(c.x-e.x)*0.5; mvy+=(c.y-e.y)*0.5; }                           // 응집
+      for(const o of alive){ if(o===e||o.pg!==e.pg) continue; const ox=e.x-o.x,oy=e.y-o.y,od=Math.hypot(ox,oy); if(od>0&&od<e.r+o.r+10){ mvx+=ox/od*22; mvy+=oy/od*22; } }  // 분리
+      const ml=Math.hypot(mvx,mvy)||1, sp=e.type.speed*0.45*speedMul*dt; e.x+=mvx/ml*sp; e.y+=mvy/ml*sp; e.face=Math.atan2(mvy,mvx);
+    } else {  // 수비대: 거점 유지 + 좌우 경계
+      const hx=e.home.x-e.x, hy=e.home.y-e.y, hd=Math.hypot(hx,hy);
+      if(hd>30){ const sp=e.type.speed*0.4*speedMul*dt; e.x+=hx/hd*sp; e.y+=hy/hd*sp; e.face=Math.atan2(hy,hx); }
+      else e.face+=0.7*dt;   // 천천히 주위 스캔
+    }
+    resolveCovers(e);
+  }
+  updateFlareLogic(dt,alive);
+}
+
+//---------------- 신호탄 → 드랍쉽 증원 ----------------
+function updateFlareLogic(dt,alive){
+  if(reinforceActive || reinforceCD>0){ flareTimer=-1; return; }   // 진행 중이거나 글로벌 쿨 중이면 불가
+  const aggroed=alive.filter(e=>e.aggro && dist(player,e)<800);
+  if(aggroed.length>=3){
+    if(flareTimer<0) flareTimer=6+Math.random()*5;
+    flareTimer-=dt;
+    if(flareTimer<=0){ const s=aggroed[0]; fireFlare(s.x,s.y); flareTimer=-1; }
+  } else flareTimer=-1;
+}
+function fireFlare(x,y){
+  flare={x,y,z:0,t:0,spawned:false}; reinforceActive=true;
+  pushLog("🔴 적이 신호탄을 쏘아 올렸다! 드랍쉽 접근 중...","#ff5d5d"); toast("🔴 신호탄! 드랍쉽 접근!");
+}
+function spawnDropships(x,y){
+  const n=2+Math.floor(Math.random()*2);   // 한 번에 2~3대
+  for(let i=0;i<n;i++){ const sx=Math.random()<0.5?-180:WORLD.w+180, sy=WALL+120+Math.random()*(WORLD.h-WALL*2-240);
+    dropships.push({x:sx,y:sy,tx:x+(Math.random()-0.5)*240,ty:y+(Math.random()-0.5)*240,hp:120,maxhp:120,spd:780,r:34,state:"incoming",dropTimer:0,bounceMsg:0}); }
+  pushLog(`🚁 드랍쉽 ${n}대 접근! 중장갑↑ 무기로 격추 가능`,"#ffd45d");
+}
+function dropTroops(s){
+  const n=3+Math.floor(Math.random()*3);
+  for(let i=0;i<n;i++){ let kind="infected"; const r=Math.random(); if(r<0.30) kind="mech"; if(r>0.92) kind="heavy";
+    const a=Math.random()*7,d=Math.random()*40; spawnEnemy(kind,s.x+Math.cos(a)*d,s.y+Math.sin(a)*d,"patrol");
+    const e=enemies[enemies.length-1]; e.aggro=true; e.reinforce=true; }   // 증원 부대 태그
+  pushLog("🪂 드랍쉽이 적을 투하했다!","#ff8a8a");
+}
+function destroyDropship(s){ craters.push({x:s.x,y:s.y,t:0.7,r:90}); pushLog("💥 드랍쉽 격추! 증원 차단 성공","#7CFFB2"); toast("💥 드랍쉽 격추!"); }
+function updateReinforcements(dt){
+  if(flare){ flare.t+=dt; flare.z=Math.min(420,flare.z+760*dt);
+    if(flare.t>=1.0 && !flare.spawned){ flare.spawned=true; spawnDropships(flare.x,flare.y); }
+    if(flare.t>=1.7) flare=null; }
+  for(const s of dropships){ if(s.bounceMsg>0) s.bounceMsg-=dt;
+    if(s.state==="incoming"){ const dx=s.tx-s.x,dy=s.ty-s.y,d=Math.hypot(dx,dy);
+      if(d>6){ s.x+=dx/d*s.spd*dt; s.y+=dy/d*s.spd*dt; } else { s.state="hovering"; s.dropTimer=2.0; } }
+    else if(s.state==="hovering"){ s.dropTimer-=dt; if(s.dropTimer<=0){ dropTroops(s); s.state="leaving"; s.lx=s.x<WORLD.w/2?-220:WORLD.w+220; } }
+    else if(s.state==="leaving"){ s.x+=Math.sign(s.lx-s.x)*s.spd*dt; if(s.x<-200||s.x>WORLD.w+200) s.dead=true; } }
+  dropships=dropships.filter(s=>!s.dead);
+  // 글로벌 쿨타임은 시간이 지나면서 감소
+  if(reinforceCD>0) reinforceCD=Math.max(0,reinforceCD-dt);
+  // 증원 부대(드랍쉽+투하병)를 모두 소탕하면 → 30초 글로벌 쿨타임 시작
+  if(reinforceActive && !flare && dropships.length===0 && !enemies.some(e=>e.alive && e.reinforce)){
+    reinforceActive=false; reinforceCD=30; pushLog("✅ 증원 부대 소탕! 재증원까지 30초","#7CFFB2");
+  }
+}
+function speedUpCooldown(amt){ if(reinforceCD>0) reinforceCD=Math.max(0,reinforceCD-amt); }  // 유저 액션 시 쿨 단축
+
+//---------------- 서플라이 디폿 (폭발물로만 파괴, 주기적 적 스폰) ----------------
+function updateDepots(dt){
+  for(const dp of depots){ if(dp.hp<=0) continue;
+    if(Math.hypot(player.x-dp.x,player.y-dp.y) < 760){   // 플레이어가 근처(교전)일 때만 스폰
+      dp.spawnCD-=dt;
+      if(dp.spawnCD<=0){ dp.spawnCD=5; const n=2+Math.floor(Math.random()*2);
+        for(let i=0;i<n;i++){ const a=Math.random()*7,d=44+Math.random()*30; spawnEnemy("infected",dp.x+Math.cos(a)*d,dp.y+Math.sin(a)*d,"guard",{x:dp.x,y:dp.y}); enemies[enemies.length-1].aggro=true; } }
+    } else if(dp.spawnCD<3) dp.spawnCD=3;   // 멀어지면 스폰 일시중지
+  }
+  depots=depots.filter(d=>d.hp>0);
+}
+function damageDepotsAt(x,y,r,dmg){
+  for(const dp of depots){ if(dp.hp<=0) continue;
+    if(Math.hypot(dp.x-x,dp.y-y)<=r+dp.r){ dp.hp=0;   // 폭발물 한 방에 파괴
+      craters.push({x:dp.x,y:dp.y,t:0.9,r:140}); pushLog("💥 서플라이 디폿 파괴 — 적 스폰 중단!","#7CFFB2"); toast("💥 디폿 파괴!"); } }
+}
+
+//---------------- 폭격 스트라타젬 ----------------
+function dropBomb(b,T){   // 하늘에서 떨어지는 폭탄 생성 (착탄 시 폭발)
+  const a=Math.random()*7, d=Math.random()*T.area, x=b.x+Math.cos(a)*d, y=b.y+Math.sin(a)*d;
+  fallingBombs.push({x,y,z:540+Math.random()*160,vz:820,blast:T.blast,dmg:T.dmg,pen:T.pen,fireR:T.fireR||0,fireLife:T.fireLife||0});
+}
+function impactBomb(fb){
+  craters.push({x:fb.x,y:fb.y,t:0.45,r:fb.blast});
+  for(const e of enemies) if(e.alive && Math.hypot(e.x-fb.x,e.y-fb.y)<=fb.blast) damageEnemy(e,fb.dmg,fb.pen);
+  damageDepotsAt(fb.x,fb.y,fb.blast,fb.dmg);
+  if(fb.fireR) firePatches.push({x:fb.x,y:fb.y,r:fb.fireR,life:fb.fireLife});
+}
+function rodStrike(b,T){
+  let target=null,best=-1;   // 좁은 범위 내 가장 큰(체력 높은) 적
+  for(const e of enemies){ if(!e.alive) continue; if(Math.hypot(e.x-b.x,e.y-b.y)<=T.search && e.type.hp>best){ best=e.type.hp; target=e; } }
+  const tx=target?target.x:b.x, ty=target?target.y:b.y;
+  beams.push({x:tx,y:ty,t:0.5}); craters.push({x:tx,y:ty,t:0.8,r:95});
+  if(target) damageEnemy(target,T.dmg,T.pen);
+  for(const e of enemies) if(e.alive && Math.hypot(e.x-tx,e.y-ty)<=T.splash) damageEnemy(e,T.dmg*0.5,T.pen);
+  damageDepotsAt(tx,ty,T.splash,T.dmg);
+  // 드랍쉽도 강하로 격추
+  for(const s of dropships){ if(s.state!=="leaving" && Math.hypot(s.x-tx,s.y-ty)<=T.splash+s.r){ s.hp=0; s.dead=true; destroyDropship(s); } }
+  pushLog("⚡ 신의 지팡이 강하!","#bfe6ff"); toast("⚡ 신의 지팡이!");
+}
+function updateBombs(dt){
+  // 던져진 신호기(수류탄과 동일한 포물선)
+  for(const b of beaconThrows){ b.t+=dt; const p=Math.min(1,b.t/b.dur);
+    b.x=b.sx+(b.tx-b.sx)*p; b.y=b.sy+(b.ty-b.sy)*p; b.z=Math.sin(p*Math.PI)*70;
+    if(p>=1 && !b.landed){ b.landed=true;
+      if(b.cat==="turret"){ deployTurretAt(b.tx,b.ty,b.variant); }   // 던진 자리에 포탑 설치
+      else { const T=BOMB_TYPES[b.variant];
+        bombardments.push({type:b.variant,x:b.tx,y:b.ty,delay:T.delay,dur:T.dur||0,cd:0,done:false});
+        pushLog(`📡 ${T.name} 신호기 작동 — ${T.delay}초 후 폭격!`,T.color); } } }
+  beaconThrows=beaconThrows.filter(b=>!b.landed);
+  // 낙하 폭탄 (하늘 → 착탄)
+  for(const fb of fallingBombs){ fb.z-=fb.vz*dt; if(fb.z<=0 && !fb.hit){ fb.hit=true; impactBomb(fb); } }
+  fallingBombs=fallingBombs.filter(fb=>!fb.hit);
+  // 진행 중 폭격
+  for(const b of bombardments){ const T=BOMB_TYPES[b.type];
+    if(b.delay>0){ b.delay-=dt; continue; }
+    if(b.type===1){ if(!b.done){ b.done=true; rodStrike(b,T); } }                  // 신의 지팡이: 단발
+    else { b.dur-=dt; b.cd-=dt; if(b.cd<=0){ b.cd=T.interval; dropBomb(b,T); } if(b.dur<=0) b.done=true; }  // 융단폭격
+  }
+  bombardments=bombardments.filter(b=>!b.done);
+  // 네이팜 화염 지대 (닿으면 화상)
+  for(const f of firePatches){ f.life-=dt;
+    for(const e of enemies){ if(e.alive && Math.hypot(e.x-f.x,e.y-f.y)<=f.r){ e.burn=3; e.aggro=true; } }
+    if(Math.hypot(player.x-f.x,player.y-f.y)<=f.r){ player.hp-=12*dt; flashDamage(); } }
+  firePatches=firePatches.filter(f=>f.life>0);
+  for(const bm of beams) bm.t-=dt; beams=beams.filter(b=>b.t>0);
+}
+
+//---------------- 탄환 ----------------
+function updateBullets(dt){
+  for(const b of bullets){ if(b.life<=0) continue; b.life-=dt; b.x+=b.vx*dt; b.y+=b.vy*dt;
+    if(bulletHitsCover(b)){ if(b.splash>0) explode(b); b.life=0; continue; }
+    if(b.fromPlayer){
+      // 드랍쉽 피격 (중장갑 이상 관통만 통함)
+      let hitShip=false;
+      for(const s of dropships){ if(s.state==="leaving") continue;
+        if(Math.hypot(s.x-b.x,s.y-b.y)<s.r){
+          if(b.pen>=2){ s.hp-=b.dmg; if(b.splash>0) explode(b); if(s.hp<=0){ s.dead=true; destroyDropship(s); } }
+          else if(s.bounceMsg<=0){ s.bounceMsg=0.8; pushLog("🛡️ 드랍쉽 장갑 — 중장갑↑ 무기 필요!","#9fbfff"); }
+          b.life=0; hitShip=true; break; } }
+      if(hitShip) continue;
+      for(const e of enemies){ if(!e.alive||b.hits.includes(e)) continue;
+        if(Math.hypot(e.x-b.x,e.y-b.y)<e.r){ damageEnemy(e,b.dmg,b.pen);
+          if(b.splash>0){ explode(b); b.life=0; break; } if(b.pierce){ b.hits.push(e); } else { b.life=0; break; } } }
+    } else if(Math.hypot(player.x-b.x,player.y-b.y)<player.r){ player.hp-=12; flashDamage(); b.life=0; }
+  }
+  bullets=bullets.filter(b=>b.life>0);
+}
+function explode(b){ craters.push({x:b.x,y:b.y,t:0.5,r:b.splash});
+  for(const e of enemies){ if(e.alive && Math.hypot(e.x-b.x,e.y-b.y)<=b.splash) damageEnemy(e,b.dmg*0.7,b.pen); }
+  damageDepotsAt(b.x,b.y,b.splash,b.dmg*0.7); }
+let damageTimer=0;
+function flashDamage(){ damageEl.style.opacity="1"; damageTimer=0.15; }
+
+//---------------- 투척/설치 업데이트 ----------------
+function updateTacticals(dt){
+  if(throwCD>0) throwCD-=dt;
+  for(const t of TACTICALS){ if(t.charges<t.max){ t.rt+=dt; if(t.rt>=t.regen){ t.rt=0; t.charges++; } } }
+  for(const g of grenades){ g.t+=dt; const p=Math.min(1,g.t/g.dur);
+    g.x=g.sx+(g.tx-g.sx)*p; g.y=g.sy+(g.ty-g.sy)*p; g.z=Math.sin(p*Math.PI)*70;
+    if(p>=1 && !g.exploded){ g.exploded=true; craters.push({x:g.tx,y:g.ty,t:0.6,r:g.radius});
+      const gp=g.pen!=null?g.pen:3;
+      for(const e of enemies) if(e.alive && Math.hypot(e.x-g.tx,e.y-g.ty)<=g.radius) damageEnemy(e,g.dmg,gp);
+      damageDepotsAt(g.tx,g.ty,g.radius,g.dmg); } }
+  grenades=grenades.filter(g=>!g.exploded);
+  // 자동 포탑
+  for(const tr of turrets){ tr.life-=dt; if(tr.life<=0) continue; tr.cd-=dt;
+    let best=null,bd=tr.range;
+    for(const e of enemies){ if(!e.alive) continue; const d=Math.hypot(e.x-tr.x,e.y-tr.y); if(d<bd && !coverBetween(tr.x,tr.y,e.x,e.y)){ best=e; bd=d; } }
+    tr.active=!!best;
+    if(best){ tr.ang=Math.atan2(best.y-tr.y,best.x-tr.x);
+      if(tr.flame){  // 화염: 전방 원뿔 내 모든 적에게 화상
+        for(const e of enemies){ if(!e.alive) continue; const d=Math.hypot(e.x-tr.x,e.y-tr.y); if(d>tr.range) continue;
+          let ang=Math.atan2(e.y-tr.y,e.x-tr.x)-tr.ang; while(ang>Math.PI)ang-=2*Math.PI; while(ang<-Math.PI)ang+=2*Math.PI;
+          if(Math.abs(ang)<=tr.coneHalf){ e.burn=tr.burn; e.aggro=true; } }
+      } else if(tr.cd<=0){ tr.cd=tr.fireDelay;
+        if(tr.splash>0) missiles.push({x:tr.x,y:tr.y,tx:best.x,ty:best.y,spd:540,dmg:tr.dmg,pen:tr.pen,radius:tr.splash});
+        else bullets.push({x:tr.x,y:tr.y,vx:Math.cos(tr.ang)*950,vy:Math.sin(tr.ang)*950,dmg:tr.dmg,pen:tr.pen,splash:0,pierce:false,life:1,fromPlayer:true,color:tr.color,hits:[]});
+      } }
+  }
+  turrets=turrets.filter(t=>t.life>0);
+  // 로켓 포탑 미사일: 조준 위치로 날아가 원형 광역 폭발
+  for(const m of missiles){ const dx=m.tx-m.x,dy=m.ty-m.y,d=Math.hypot(dx,dy);
+    if(d<12) m.boom=true; else { m.x+=dx/d*m.spd*dt; m.y+=dy/d*m.spd*dt; }
+    if(m.boom){ craters.push({x:m.x,y:m.y,t:0.5,r:m.radius});
+      for(const e of enemies) if(e.alive && Math.hypot(e.x-m.x,e.y-m.y)<=m.radius) damageEnemy(e,m.dmg,m.pen);
+      damageDepotsAt(m.x,m.y,m.radius,m.dmg);
+      for(const s of dropships){ if(s.state!=="leaving" && Math.hypot(s.x-m.x,s.y-m.y)<=m.radius+s.r){ s.hp-=m.dmg; if(s.hp<=0){ s.dead=true; destroyDropship(s); } } } } }
+  missiles=missiles.filter(m=>!m.boom);
+}
+
+//---------------- 캡슐 ----------------
+function updatePods(dt){
+  for(const p of pods){
+    if(!p.landed){ p.z-=900*dt; if(p.z<=0){ p.z=0; p.landed=true; pushLog(`✅ ${WEAPONS[p.wi].name} 캡슐 착륙 — 밟아서 장착!`,"#ffd45d"); } }
+    else if(Math.hypot(player.x-p.x,player.y-p.y)<player.r+22){
+      const w=WEAPONS[p.wi];
+      if(w.cat==="basic"){ w.mag=w.magSize; w.reserve=Infinity; w.reloading=0; slots[0].wi=p.wi; setSlot(0);
+        pushLog(`🔫 ${w.name} 슬롯1 장착!`,w.color); }
+      else { w.mag=w.magSize; w.reserve=w.reserveMax; w.reloading=0; slots[1].wi=p.wi; setSlot(1);
+        pushLog(`🔫 ${w.name} 슬롯2 장착! (탄약 ${w.magSize}+${w.reserveMax})`,w.color); }
+      toast(`🔫 ${w.name} 장착!`); p.picked=true;
+    }
+  }
+  pods=pods.filter(p=>!p.picked);
+}
+
+//---------------- 플레이어 / 목표 / 탈출 ----------------
+function updatePlayer(dt){
+  let sp=player.speed*dt; if(keys["ShiftLeft"]||keys["ShiftRight"]) sp*=1.5;
+  let mx=0,my=0; if(keys["KeyW"])my-=1; if(keys["KeyS"])my+=1; if(keys["KeyA"])mx-=1; if(keys["KeyD"])mx+=1;
+  playerMoving=(mx!==0||my!==0);
+  const l=Math.hypot(mx,my); if(l>0){ player.x+=mx/l*sp; player.y+=my/l*sp; resolveCovers(player); }
+  const wm=worldMouse(); player.aim=Math.atan2(wm.y-player.y,wm.x-player.x);
+}
+function updateSpreadRecoil(dt){
+  const w=activeGun(); const k=Math.min(1,7*dt);
+  if(w){ const target=w.spreadBase+(playerMoving?w.spreadMove:0); spreadCur += (target-spreadCur)*k; }
+  else spreadCur=0;
+  recoilV -= recoilV*k; recoilH -= recoilH*k;   // 반동은 0으로 회복
+}
+function updateObjectives(dt){
+  for(const o of objectives){ if(o.done) continue;
+    if(dist(player,o)<o.r){ o.prog+=(100/OBJ_HOLD)*dt; speedUpCooldown(dt);   // 미션 게이지 진행 시 쿨 단축
+      if(o.prog>=100){ o.done=true; player.credits+=300;
+      const n=objectives.filter(x=>x.done).length; pushLog(`✅ ${o.name} 완료! +300C (${n}/${objectives.length})`,"#7CFFB2"); toast(`✅ ${o.name} 완료!`); } } }
+}
+function callRocket(){
+  if(rocket.state!=="idle") return;
+  if(dist(player,EXIT)>EXIT.r){ pushLog("🚁 탈출 지점(맵 우상단)에서 [E]를 눌러 호출하세요.","#ff8a8a"); return; }
+  rocket.state="incoming"; rocket.z=1000; pushLog("🚀 탈출 로켓 호출! 강하 중...","#ffd45d"); toast("🚀 로켓 호출!");
+}
+function updateExtraction(dt){
+  if(rocket.state==="incoming"){ rocket.z-=620*dt; if(rocket.z<=0){ rocket.z=0; rocket.state="landed"; rocket.timer=30;
+    pushLog("🚀 로켓 도착! 탑승 구역에서 30초 버텨라!","#7CFFB2"); toast("🚀 탑승하라!"); } }
+  else if(rocket.state==="landed"){
+    if(dist(player,EXIT)<EXIT.r){ rocket.timer-=dt; speedUpCooldown(dt); if(rocket.timer<=0) winGame(); }  // 탈출 게이지 진행 시 쿨 단축
+  }
+}
+function winGame(){ running=false; rocket.state="win"; const n=objectives.filter(o=>o.done).length;
+  showOverlay("🏆 탈출 성공",`목표 ${n}/${objectives.length} 완료 · 처치 ${kills} · 잔액 ${Math.floor(player.credits)}C`,"다시 출격",true); }
+function overGame(){ running=false; const n=objectives.filter(o=>o.done).length;
+  showOverlay("💀 작전 실패",`전선이 무너졌다. 목표 ${n}/${objectives.length} · 처치 ${kills}.`,"재출격",true); }
+
+//==================================================================
+//  렌더링
+//==================================================================
+function updateCamera(){ cam.x=Math.max(0,Math.min(WORLD.w-W,player.x-W/2)); cam.y=Math.max(0,Math.min(WORLD.h-H,player.y-H/2));
+  if(WORLD.w<W) cam.x=(WORLD.w-W)/2; if(WORLD.h<H) cam.y=(WORLD.h-H)/2; }
+function render(){
+  ctx.fillStyle="#0c0c10"; ctx.fillRect(0,0,W,H);
+  ctx.save(); ctx.translate(-cam.x,-cam.y);
+  ctx.fillStyle="#26291f"; ctx.fillRect(WALL,WALL,WORLD.w-WALL*2,WORLD.h-WALL*2);
+  ctx.strokeStyle="rgba(255,255,255,.04)"; ctx.lineWidth=1; ctx.beginPath();
+  for(let x=WALL;x<=WORLD.w-WALL;x+=80){ ctx.moveTo(x,WALL); ctx.lineTo(x,WORLD.h-WALL); }
+  for(let y=WALL;y<=WORLD.h-WALL;y+=80){ ctx.moveTo(WALL,y); ctx.lineTo(WORLD.w-WALL,y); } ctx.stroke();
+  ctx.fillStyle="#3a3a42"; ctx.fillRect(0,0,WORLD.w,WALL); ctx.fillRect(0,WORLD.h-WALL,WORLD.w,WALL); ctx.fillRect(0,0,WALL,WORLD.h); ctx.fillRect(WORLD.w-WALL,0,WALL,WORLD.h);
+
+  for(const c of craters){ ctx.save(); ctx.globalAlpha=Math.min(0.6,c.t); const g=ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,c.r);
+    g.addColorStop(0,"#ff7a2e"); g.addColorStop(.5,"#7a2a10"); g.addColorStop(1,"rgba(0,0,0,0)"); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(c.x,c.y,c.r,0,7); ctx.fill(); ctx.restore(); }
+
+  for(const o of objectives) drawObjective(o);
+  for(const dp of depots) drawDepot(dp);
+  drawExit();
+
+  for(const c of COVERS){ ctx.fillStyle="#4a4640"; ctx.fillRect(c.x,c.y,c.w,c.h); ctx.fillStyle="#5d5851"; ctx.fillRect(c.x+4,c.y+4,c.w-8,c.h-8);
+    ctx.strokeStyle="#2c2925"; ctx.lineWidth=2; ctx.strokeRect(c.x,c.y,c.w,c.h); }
+
+  for(const f of firePatches) drawFirePatch(f);
+  for(const b of bullets){ ctx.fillStyle=b.color; ctx.beginPath(); ctx.arc(b.x,b.y,b.fromPlayer?4:5,0,7); ctx.fill(); }
+  for(const tr of turrets) drawTurret(tr);
+  for(const e of enemies){ if(e.alive) drawEnemy(e); }
+  for(const m of missiles) drawMissile(m);
+  for(const g of grenades) drawGrenade(g);
+  for(const b of beaconThrows) drawBeacon(b);
+  for(const p of pods) drawPod(p);
+  drawPlayer();
+  for(const s of dropships) drawDropship(s);
+  if(flare) drawFlare(flare);
+  for(const b of bombardments) drawBombMarker(b);
+  for(const fb of fallingBombs) drawFallingBomb(fb);
+  for(const bm of beams) drawBeam(bm);
+  drawParticles();
+  ctx.restore();
+  drawMinimap();
+  drawCrosshair();
+}
+function drawCrosshair(){
+  const c=crosshairScreen();
+  const gap=6+spreadCur*200, arm=4+spreadCur*150;   // 스프레드 클수록 벌어지고 길어짐
+  const w=activeGun();
+  const reloading = w && w.reloading>0;
+  const lowAmmo = w && !reloading && w.mag<=w.magSize*0.3;
+  const chColor = reloading ? "rgba(255,212,77,.95)" : (lowAmmo ? "rgba(255,150,60,.95)" : "rgba(255,255,255,.92)");
+  ctx.save(); ctx.strokeStyle=chColor; ctx.lineWidth=2; ctx.lineCap="round";
+  for(const d of [[0,-1],[0,1],[-1,0],[1,0]]){ ctx.beginPath();
+    ctx.moveTo(c.x+d[0]*gap,c.y+d[1]*gap); ctx.lineTo(c.x+d[0]*(gap+arm),c.y+d[1]*(gap+arm)); ctx.stroke(); }
+  ctx.fillStyle=chColor; ctx.beginPath(); ctx.arc(c.x,c.y,2,0,7); ctx.fill();
+  // 재장전 연출: 배경 + 진행 링 + 회전 표식 + 남은 시간
+  if(reloading){
+    const prog=1-w.reloading/w.reload, R=gap+arm+14, ea=-Math.PI/2+prog*Math.PI*2;
+    ctx.fillStyle="rgba(0,0,0,.35)"; ctx.beginPath(); ctx.arc(c.x,c.y,R+6,0,7); ctx.fill();
+    ctx.strokeStyle="rgba(255,255,255,.18)"; ctx.lineWidth=5; ctx.beginPath(); ctx.arc(c.x,c.y,R,0,7); ctx.stroke();
+    ctx.strokeStyle="#ffd45d"; ctx.lineWidth=5; ctx.beginPath(); ctx.arc(c.x,c.y,R,-Math.PI/2,ea); ctx.stroke();
+    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(c.x+Math.cos(ea)*R,c.y+Math.sin(ea)*R,3.5,0,7); ctx.fill();
+    ctx.fillStyle="#ffd45d"; ctx.font="bold 13px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText("⟳ 재장전",c.x,c.y-R-22); ctx.fillText(w.reloading.toFixed(1)+"s",c.x,c.y-R-8);
+  } else if(lowAmmo){
+    ctx.fillStyle="#ff9d3a"; ctx.font="bold 11px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("탄약 부족 (R)",c.x,c.y-gap-arm-12);
+  }
+  ctx.restore();
+}
+function drawObjective(o){
+  const col=o.done?"#2a5a44":"#3b6fa5";
+  ctx.save(); ctx.globalAlpha=0.8; ctx.fillStyle=col; ctx.beginPath(); ctx.arc(o.x,o.y,o.r,0,7); ctx.fill(); ctx.globalAlpha=1;
+  ctx.strokeStyle=o.done?"#7CFFB2":"#fff"; ctx.lineWidth=3; ctx.stroke();
+  if(!o.done && o.prog>0){ ctx.strokeStyle="#7CFFB2"; ctx.lineWidth=6; ctx.beginPath(); ctx.arc(o.x,o.y,o.r+9,-Math.PI/2,-Math.PI/2+(o.prog/100)*Math.PI*2); ctx.stroke(); }
+  ctx.fillStyle="#fff"; ctx.font="28px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(o.done?"✅":"⚙️",o.x,o.y);
+  ctx.fillStyle=o.done?"#7CFFB2":"#cfe"; ctx.font="13px sans-serif"; ctx.fillText(o.name,o.x,o.y+o.r+16); ctx.restore();
+}
+function drawExit(){
+  const e=EXIT; ctx.save(); ctx.globalAlpha=0.8; ctx.fillStyle="#4bb55a"; ctx.beginPath(); ctx.arc(e.x,e.y,e.r,0,7); ctx.fill(); ctx.globalAlpha=1;
+  ctx.strokeStyle="#fff"; ctx.setLineDash([10,7]); ctx.lineWidth=3; ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle="#fff"; ctx.font="34px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("🚁",e.x,e.y);
+  ctx.fillStyle="#bfe"; ctx.font="14px sans-serif"; ctx.fillText("탈출 지점",e.x,e.y+e.r+18);
+  if(rocket.state==="incoming"||rocket.state==="landed"){ const ry=e.y-rocket.z;
+    ctx.fillStyle="#cfcfcf"; ctx.fillRect(e.x-15,ry-54,30,54);
+    ctx.fillStyle="#e23b3b"; ctx.beginPath(); ctx.moveTo(e.x-15,ry-54); ctx.lineTo(e.x,ry-84); ctx.lineTo(e.x+15,ry-54); ctx.closePath(); ctx.fill();
+    ctx.fillStyle="#888"; ctx.beginPath(); ctx.moveTo(e.x-15,ry); ctx.lineTo(e.x-26,ry+14); ctx.lineTo(e.x-15,ry+10); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(e.x+15,ry); ctx.lineTo(e.x+26,ry+14); ctx.lineTo(e.x+15,ry+10); ctx.closePath(); ctx.fill();
+    if(rocket.state==="incoming"){ ctx.fillStyle="#ffb02e"; ctx.beginPath(); ctx.arc(e.x,ry+10,9,0,7); ctx.fill(); }
+  }
+  ctx.restore();
+}
+function drawEnemy(e){
+  // 비전투 적 시야 원뿔(가까이 있을 때만 — 스텔스 가늠용)
+  if(!e.aggro && Math.hypot(e.x-player.x,e.y-player.y)<1000){
+    ctx.save(); ctx.globalAlpha=0.07; ctx.fillStyle="#ffe14d"; ctx.beginPath(); ctx.moveTo(e.x,e.y);
+    ctx.arc(e.x,e.y,e.vis,e.face-e.fov,e.face+e.fov); ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+  ctx.fillStyle="rgba(0,0,0,.35)"; ctx.beginPath(); ctx.ellipse(e.x,e.y+e.r*0.7,e.r,e.r*0.5,0,0,7); ctx.fill();
+  ctx.fillStyle=e.hit>0?"#fff":e.type.color; ctx.beginPath(); ctx.arc(e.x,e.y,e.r,0,7); ctx.fill();
+  if(e.type.armor>=2){ ctx.strokeStyle="#2a2a2a"; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(e.x,e.y,e.r-3,0,7); ctx.stroke(); }
+  const a=Math.atan2(player.y-e.y,player.x-e.x); ctx.fillStyle="#ffe14d";
+  ctx.beginPath(); ctx.arc(e.x+Math.cos(a-0.3)*e.r*0.5,e.y+Math.sin(a-0.3)*e.r*0.5,2.5,0,7); ctx.fill();
+  ctx.beginPath(); ctx.arc(e.x+Math.cos(a+0.3)*e.r*0.5,e.y+Math.sin(a+0.3)*e.r*0.5,2.5,0,7); ctx.fill();
+  if(e.hp<e.type.hp){ const w=e.r*2; ctx.fillStyle="#400"; ctx.fillRect(e.x-w/2,e.y-e.r-9,w,4); ctx.fillStyle="#ff4d4d"; ctx.fillRect(e.x-w/2,e.y-e.r-9,w*Math.max(0,e.hp/e.type.hp),4); }
+  if(e.burn>0){ ctx.font="15px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("🔥",e.x,e.y-e.r-18); }  // 화상 표시
+}
+function drawGrenade(g){ ctx.fillStyle="rgba(0,0,0,.35)"; ctx.beginPath(); ctx.ellipse(g.x,g.y,6,3,0,0,7); ctx.fill();
+  ctx.fillStyle="#2f6b3f"; ctx.beginPath(); ctx.arc(g.x,g.y-g.z,6,0,7); ctx.fill(); ctx.strokeStyle="#7CFFB2"; ctx.lineWidth=2; ctx.stroke(); }
+function drawTurret(tr){
+  // 사거리/원뿔
+  ctx.save();
+  if(tr.flame){ if(tr.active){ ctx.globalAlpha=0.35; ctx.fillStyle="#ff7a2e"; ctx.beginPath(); ctx.moveTo(tr.x,tr.y);
+    ctx.arc(tr.x,tr.y,tr.range,tr.ang-tr.coneHalf,tr.ang+tr.coneHalf); ctx.closePath(); ctx.fill(); } }
+  else { ctx.globalAlpha=0.05; ctx.fillStyle=tr.color; ctx.beginPath(); ctx.arc(tr.x,tr.y,tr.range,0,7); ctx.fill(); }
+  ctx.restore();
+  ctx.fillStyle="rgba(0,0,0,.35)"; ctx.beginPath(); ctx.ellipse(tr.x,tr.y+6,15,7,0,0,7); ctx.fill();
+  ctx.fillStyle="#3a4a55"; ctx.beginPath(); ctx.arc(tr.x,tr.y,13,0,7); ctx.fill();
+  // 포신(타겟 방향)
+  ctx.save(); ctx.translate(tr.x,tr.y); ctx.rotate(tr.ang); ctx.fillStyle=tr.color; ctx.fillRect(6,-4,16,8); ctx.restore();
+  ctx.fillStyle=tr.color; ctx.fillRect(tr.x-15,tr.y-22,30*Math.max(0,tr.life/18),3);
+}
+function drawMissile(m){ ctx.fillStyle="#ff3a3a"; ctx.beginPath(); ctx.arc(m.x,m.y,5,0,7); ctx.fill();
+  ctx.globalAlpha=0.4; ctx.fillStyle="#ffb02e"; ctx.beginPath(); ctx.arc(m.x,m.y,8,0,7); ctx.fill(); ctx.globalAlpha=1; }
+function drawDropship(s){
+  ctx.fillStyle="rgba(0,0,0,.3)"; ctx.beginPath(); ctx.ellipse(s.x,s.y,s.r,s.r*0.45,0,0,7); ctx.fill();
+  const by=s.y-70;
+  ctx.fillStyle="#555a66"; ctx.beginPath(); ctx.ellipse(s.x,by,s.r,s.r*0.6,0,0,7); ctx.fill();
+  ctx.fillStyle="#3a3f48"; ctx.fillRect(s.x-s.r*0.7,by-5,s.r*1.4,9);
+  ctx.fillStyle="#ffd45d"; ctx.font="16px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("🚁",s.x,by);
+  ctx.fillStyle="#400"; ctx.fillRect(s.x-32,by-s.r*0.6-12,64,5); ctx.fillStyle="#ff6a3a"; ctx.fillRect(s.x-32,by-s.r*0.6-12,64*Math.max(0,s.hp/s.maxhp),5);
+  if(s.state==="hovering"){ ctx.strokeStyle="rgba(255,150,60,.6)"; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(s.x,by+10); ctx.lineTo(s.x,s.y); ctx.stroke(); }
+}
+function drawFirePatch(f){ ctx.save(); ctx.globalAlpha=0.4*Math.min(1,f.life/3+0.35);
+  const g=ctx.createRadialGradient(f.x,f.y,0,f.x,f.y,f.r); g.addColorStop(0,"#ffd06a"); g.addColorStop(.5,"#ff6a2e"); g.addColorStop(1,"rgba(120,30,0,0)");
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(f.x,f.y,f.r,0,7); ctx.fill(); ctx.restore(); }
+function drawBeacon(b){ ctx.fillStyle="rgba(0,0,0,.3)"; ctx.beginPath(); ctx.ellipse(b.x,b.y,5,2.5,0,0,7); ctx.fill();
+  ctx.fillStyle=b.color; ctx.beginPath(); ctx.arc(b.x,b.y-b.z,5,0,7); ctx.fill(); ctx.strokeStyle="#fff"; ctx.lineWidth=1.5; ctx.stroke(); }
+function drawFallingBomb(fb){
+  ctx.fillStyle="rgba(0,0,0,.3)"; const sh=6+10*(1-Math.min(1,fb.z/600)); ctx.beginPath(); ctx.ellipse(fb.x,fb.y,sh,sh*0.5,0,0,7); ctx.fill();
+  const by=fb.y-fb.z;
+  ctx.fillStyle="#2a2a2a"; ctx.beginPath(); ctx.ellipse(fb.x,by,5,10,0,0,7); ctx.fill();         // 폭탄 본체
+  ctx.fillStyle="#888"; ctx.fillRect(fb.x-5,by-11,10,3);                                          // 핀
+  ctx.fillStyle="#ffb02e"; ctx.beginPath(); ctx.moveTo(fb.x-3,by+9); ctx.lineTo(fb.x,by+9+8+Math.random()*4); ctx.lineTo(fb.x+3,by+9); ctx.closePath(); ctx.fill(); // 꼬리 화염
+}
+function drawBombMarker(b){ if(b.delay<=0 && b.type===1) return; const T=BOMB_TYPES[b.type];
+  ctx.save(); const r=b.type===1?(T.search):(T.area);
+  if(b.delay>0){ const pulse=0.5+0.5*Math.sin(performance.now()/110); ctx.globalAlpha=0.45+0.4*pulse;
+    ctx.strokeStyle=T.color; ctx.lineWidth=3; ctx.setLineDash([10,7]); ctx.beginPath(); ctx.arc(b.x,b.y,r,0,7); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=T.color; ctx.font="bold 24px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("⚠ "+Math.ceil(b.delay),b.x,b.y);
+  } else { ctx.globalAlpha=0.12; ctx.fillStyle=T.color; ctx.beginPath(); ctx.arc(b.x,b.y,r,0,7); ctx.fill(); }
+  ctx.restore(); }
+function drawBeam(bm){ ctx.save(); ctx.globalAlpha=Math.min(1,bm.t*2);
+  ctx.strokeStyle="#bfe6ff"; ctx.lineWidth=12; ctx.beginPath(); ctx.moveTo(bm.x,bm.y-1300); ctx.lineTo(bm.x,bm.y); ctx.stroke();
+  ctx.strokeStyle="#fff"; ctx.lineWidth=4; ctx.stroke(); ctx.restore(); }
+function drawParticles(){ for(const p of particles){ ctx.globalAlpha=Math.max(0,p.life/p.max); ctx.fillStyle=p.color;
+  if(p.kind==="spark"){ ctx.fillRect(p.x,p.y,p.r,p.r); } else { ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill(); } } ctx.globalAlpha=1; }
+function drawDepot(dp){
+  ctx.fillStyle="rgba(0,0,0,.3)"; ctx.fillRect(dp.x-28,dp.y-6,56,22);
+  ctx.fillStyle="#5a4a2a"; ctx.fillRect(dp.x-26,dp.y-28,52,42); ctx.fillStyle="#7a6636"; ctx.fillRect(dp.x-26,dp.y-28,52,9);
+  ctx.fillStyle="#fff"; ctx.font="18px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("📦",dp.x,dp.y-5);
+  ctx.fillStyle="#400"; ctx.fillRect(dp.x-28,dp.y-38,56,5); ctx.fillStyle="#ff6a3a"; ctx.fillRect(dp.x-28,dp.y-38,56*Math.max(0,dp.hp/dp.maxhp),5);
+  ctx.fillStyle="#caa"; ctx.font="10px sans-serif"; ctx.fillText("폭발물로만 파괴",dp.x,dp.y+24);
+}
+function drawFlare(f){
+  const fy=f.y-f.z;
+  ctx.save(); ctx.strokeStyle="rgba(255,60,60,.6)"; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(f.x,f.y); ctx.lineTo(f.x,fy); ctx.stroke();
+  ctx.globalAlpha=0.9; ctx.fillStyle="#ff4040"; ctx.beginPath(); ctx.arc(f.x,fy,6,0,7); ctx.fill();
+  ctx.globalAlpha=0.3; ctx.beginPath(); ctx.arc(f.x,fy,14,0,7); ctx.fill(); ctx.restore();
+}
+function drawPod(p){
+  ctx.fillStyle="rgba(0,0,0,.4)"; ctx.beginPath(); const sh=18*(1-Math.min(1,p.z/760)*0.5); ctx.ellipse(p.x,p.y,sh,sh*0.5,0,0,7); ctx.fill();
+  const py=p.y-p.z, w=WEAPONS[p.wi];
+  if(!p.landed){ ctx.strokeStyle="rgba(255,255,255,.5)"; ctx.beginPath(); ctx.moveTo(p.x,py-22); ctx.lineTo(p.x-14,py-2); ctx.moveTo(p.x,py-22); ctx.lineTo(p.x+14,py-2); ctx.stroke(); }
+  ctx.fillStyle=p.landed?"#caa23b":"#8a7a3a"; ctx.fillRect(p.x-16,py-18,32,30); ctx.fillStyle=w.color; ctx.fillRect(p.x-16,py-18,32,7);
+  ctx.fillStyle="#fff"; ctx.font="13px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("📦",p.x,py-2);
+  if(p.landed){ ctx.fillStyle="#ffd45d"; ctx.font="11px sans-serif"; ctx.fillText(w.name,p.x,py+22); }
+}
+function drawPlayer(){
+  ctx.fillStyle="rgba(0,0,0,.4)"; ctx.beginPath(); ctx.ellipse(player.x,player.y+10,player.r,player.r*0.5,0,0,7); ctx.fill();
+  const sl=slots[activeSlot], heldColor=sl.type==="gun"?WEAPONS[sl.wi].color:TACTICALS[sl.ti].color;
+  ctx.strokeStyle="rgba(255,255,255,.15)"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(player.x,player.y); ctx.lineTo(player.x+Math.cos(player.aim)*700,player.y+Math.sin(player.aim)*700); ctx.stroke();
+  ctx.fillStyle="#3f7d4f"; ctx.beginPath(); ctx.arc(player.x,player.y,player.r,0,7); ctx.fill(); ctx.strokeStyle="#bfe6c8"; ctx.lineWidth=2; ctx.stroke();
+  ctx.save(); ctx.translate(player.x,player.y); ctx.rotate(player.aim);
+  if(heldBeacon>=0){ ctx.fillStyle=beacons[heldBeacon].color; ctx.beginPath(); ctx.arc(16,0,6,0,7); ctx.fill(); ctx.strokeStyle="#fff"; ctx.lineWidth=1.5; ctx.stroke(); }  // 손에 든 신호기
+  else { ctx.fillStyle=applyShade(heldColor,0.85);
+    if(sl.type==="gun"){ ctx.fillRect(8,-4,20,8); if(muzzle>0){ ctx.fillStyle="#fff7c2"; ctx.beginPath(); ctx.arc(30,0,7*(muzzle/0.05),0,7); ctx.fill(); } }
+    else { ctx.beginPath(); ctx.arc(16,0,6,0,7); ctx.fill(); } }
+  ctx.restore();
+}
+function applyShade(hex,f){ const n=parseInt(hex.slice(1),16); return `rgb(${((n>>16&255)*f)|0},${((n>>8&255)*f)|0},${((n&255)*f)|0})`; }
+function drawMinimap(){
+  const mw=210, mh=mw*WORLD.h/WORLD.w, ox=W-mw-14, oy=84, sx=mw/WORLD.w, sy=mh/WORLD.h;
+  ctx.save(); ctx.globalAlpha=0.82; ctx.fillStyle="#000"; ctx.fillRect(ox,oy,mw,mh); ctx.strokeStyle="#555"; ctx.strokeRect(ox,oy,mw,mh);
+  ctx.fillStyle="#3a3a42"; for(const c of COVERS) ctx.fillRect(ox+c.x*sx,oy+c.y*sy,Math.max(1,c.w*sx),Math.max(1,c.h*sy));
+  for(const o of objectives){ ctx.fillStyle=o.done?"#2a5a44":"#3b8fb5"; ctx.fillRect(ox+o.x*sx-2,oy+o.y*sy-2,5,5); }
+  ctx.fillStyle="#4bb55a"; ctx.fillRect(ox+EXIT.x*sx-3,oy+EXIT.y*sy-3,6,6);
+  for(const dp of depots){ ctx.fillStyle="#caa23b"; ctx.fillRect(ox+dp.x*sx-2,oy+dp.y*sy-2,5,5); }
+  for(const e of enemies){ if(!e.alive) continue; ctx.fillStyle=e.kind==="heavy"?"#ffd45d":e.kind==="mech"?"#ccc":"#ff4d4d"; ctx.fillRect(ox+e.x*sx-1,oy+e.y*sy-1,2,2); }
+  for(const p of pods){ ctx.fillStyle="#ffd45d"; ctx.fillRect(ox+p.x*sx-2,oy+p.y*sy-2,4,4); }
+  for(const tr of turrets){ ctx.fillStyle=tr.color; ctx.fillRect(ox+tr.x*sx-2,oy+tr.y*sy-2,4,4); }
+  for(const s of dropships){ ctx.fillStyle="#ffd45d"; ctx.fillRect(ox+s.x*sx-2,oy+s.y*sy-2,5,5); }
+  if(flare){ ctx.fillStyle="#ff4040"; ctx.fillRect(ox+flare.x*sx-2,oy+flare.y*sy-2,5,5); }
+  ctx.fillStyle="#5dff9b"; ctx.fillRect(ox+player.x*sx-2,oy+player.y*sy-2,4,4); ctx.restore();
+}
+
+//==================================================================
+//  HUD
+//==================================================================
+function ammoText(w){ const res=w.reserve===Infinity?"∞":w.reserve; return w.reloading>0?"재장전...":`${w.mag} / ${res}`; }
+function updateHUD(dt){
+  hpVal.textContent=Math.max(0,Math.ceil(player.hp));
+  creditVal.textContent=Math.floor(player.credits);
+  waveVal.textContent = reinforceActive ? ("🚁 드랍쉽 "+dropships.length+"대") : (enemies.filter(e=>e.alive).length+"기");
+  objVal.textContent=objectives.filter(o=>o.done).length+"/"+objectives.length;
+  beaconVal.textContent = beacons.length + (heldBeacon>=0?` (들기:${beacons[heldBeacon].name}, 클릭=투척)`:(beacons.length?" (F로 들기)":""));
+  cdVal.textContent = reinforceActive ? "증원 진행 중" : (reinforceCD>0 ? reinforceCD.toFixed(1)+"s" : "증원 가능");
+
+  const sl=slots[activeSlot];
+  if(sl.type==="gun"){ const w=WEAPONS[sl.wi];
+    wName.textContent=`[슬롯${activeSlot+1}] `+w.name; wAmmo.textContent=ammoText(w); wArmor.textContent="관통: "+ARMOR_NAME[w.pen];
+  } else { const t=TACTICALS[sl.ti];
+    if(t.kind==="turret"){ const v=TURRET_VARIANTS[turretVariant];
+      wName.textContent="[슬롯3] 자동 포탑 — "+v.name; wAmmo.textContent=t.charges+" / "+t.max;
+      wArmor.textContent=`[1]기관총 [2]로켓 [3]화염 · 관통 ${ARMOR_NAME[v.pen]}`;
+    } else { wName.textContent="[슬롯3] "+t.name+" (투척)"; wAmmo.textContent=t.charges+" / "+t.max; wArmor.textContent="착탄 폭발 · 전 장갑"; }
+  }
+  const g1=WEAPONS[slots[0].wi], g2=slots[1].wi!=null?WEAPONS[slots[1].wi]:null, t3=TACTICALS[slots[2].ti];
+  const t3label = t3.kind==="turret" ? `자동포탑(${TURRET_VARIANTS[turretVariant].name})` : t3.name;
+  wSlots.innerHTML=
+    `<span class="${activeSlot===0?'on':''}">1.${g1.name} ${ammoText(g1)}</span> &nbsp;|&nbsp; `+
+    (g2?`<span class="${activeSlot===1?'on':''}">2.${g2.name} ${ammoText(g2)}</span>`:`<span class="empty">2.화력 없음</span>`)+
+    ` &nbsp;|&nbsp; <span class="${activeSlot===2?'on':''}">3.${t3label} ${t3.charges}/${t3.max}</span>`;
+
+  // 임무/탈출 안내 바
+  const done=objectives.filter(o=>o.done).length;
+  if(rocket.state==="landed"){ objLabel.textContent=`🚀 탈출까지 ${Math.ceil(rocket.timer)}초 — 탑승 구역 유지!`; objFill.style.width=(rocket.timer/30*100)+"%"; }
+  else if(rocket.state==="incoming"){ objLabel.textContent="🚀 탈출 로켓 강하 중..."; objFill.style.width="100%"; }
+  else { const nearEx=dist(player,EXIT)<EXIT.r; let near=null; for(const o of objectives){ if(!o.done && dist(player,o)<o.r){ near=o; break; } }
+    if(nearEx){ objLabel.textContent="🚀 [E] 탈출 로켓 호출"; objFill.style.width="0%"; }
+    else if(near){ objLabel.textContent=`⚙️ ${near.name} ${Math.floor(near.prog)}%`; objFill.style.width=near.prog+"%"; }
+    else { objLabel.textContent=`목표 ${done}/${objectives.length} 완료 · 탈출은 🚁 지점에서 [E]`; objFill.style.width=(done/objectives.length*100)+"%"; }
+  }
+
+  for(const l of logLines) l.life-=dt; logLines=logLines.filter(l=>l.life>0);
+  logEl.innerHTML=logLines.map(l=>`<div style="color:${l.c}">${l.t}</div>`).join("");
+  if(toastTimer>0){ toastTimer-=dt; if(toastTimer<=0) toastEl.style.opacity="0"; }
+}
+
+//==================================================================
+//  메인 루프 (구매창이 열려 있어도 게임은 진행)
+//==================================================================
+let lastTime=0;
+function loop(now){
+  if(!running) return;
+  const dt=Math.min(0.05,(now-lastTime)/1000); lastTime=now;
+  if(fireCD>0)fireCD-=dt; if(muzzle>0)muzzle-=dt;
+  if(damageTimer>0){ damageTimer-=dt; if(damageTimer<=0)damageEl.style.opacity="0"; }
+  for(const c of craters)c.t-=dt; craters=craters.filter(c=>c.t>0);
+  updatePlayer(dt);
+  if(firing && !buyOpen && slots[activeSlot].type==="gun") shoot();
+  updateSpreadRecoil(dt);
+  updateEnemies(dt); updateBullets(dt); updateTacticals(dt); updateReload(dt);
+  updatePods(dt); updateObjectives(dt); updateExtraction(dt); updateReinforcements(dt); updateBombs(dt); updateDepots(dt); updateParticles(dt);
+  updateCamera(); render(); updateHUD(dt);
+  if(buyOpen) renderBuy();   // 자금 변동 실시간 반영
+  if(player.hp<=0){ overGame(); return; }
+  requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
