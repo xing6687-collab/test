@@ -334,6 +334,7 @@ startBtn.addEventListener("click",startOrResume);
 
 function startOrResume(){
   if(rocket.state==="win"||player.hp<=0||!started) resetGame();
+  initAudio();   // 사용자 제스처(클릭)에서 오디오 활성화
   overlay.classList.add("hidden"); running=true; lastTime=performance.now(); requestAnimationFrame(loop);
 }
 function pause(){ if(!running) return; running=false; showOverlay("⏸️ 일시정지","작전을 잠시 멈췄습니다.","작전 재개",false); }
@@ -360,6 +361,38 @@ let logLines=[];
 function pushLog(t,c){ logLines.unshift({t,c,life:4}); if(logLines.length>6) logLines.pop(); }
 let toastTimer=0;
 function toast(t){ toastEl.textContent=t; toastEl.style.opacity="1"; toastTimer=2; }
+
+//---------------- 사운드 (Web Audio, 외부 파일 없음 · 출격 시 활성화) ----------------
+let actx=null, masterGain=null; const lastSfx={};
+function initAudio(){ try{ if(!actx){ actx=new (window.AudioContext||window.webkitAudioContext)(); masterGain=actx.createGain(); masterGain.gain.value=0.45; masterGain.connect(actx.destination); } if(actx.state==="suspended") actx.resume(); }catch(e){} }
+function aTone(freq,dur,type,vol,slideTo){ if(!actx) return; const t=actx.currentTime,o=actx.createOscillator(),g=actx.createGain();
+  o.type=type||"square"; o.frequency.setValueAtTime(freq,t); if(slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(1,slideTo),t+dur);
+  g.gain.setValueAtTime(vol||0.2,t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.connect(g).connect(masterGain); o.start(t); o.stop(t+dur); }
+function aNoise(dur,vol,filt){ if(!actx) return; const t=actx.currentTime,sr=actx.sampleRate,n=Math.max(1,Math.floor(sr*dur)),buf=actx.createBuffer(1,n,sr),d=buf.getChannelData(0);
+  for(let i=0;i<n;i++) d[i]=Math.random()*2-1; const src=actx.createBufferSource(); src.buffer=buf; const g=actx.createGain(); g.gain.setValueAtTime(vol||0.2,t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  if(filt){ const f=actx.createBiquadFilter(); f.type="lowpass"; f.frequency.value=filt; src.connect(f); f.connect(g); } else src.connect(g);
+  g.connect(masterGain); src.start(t); src.stop(t+dur); }
+function thr(key,ms){ const now=performance.now(); if(lastSfx[key]&&now-lastSfx[key]<ms) return false; lastSfx[key]=now; return true; }
+function sfx(type,arg){ if(!actx) return;
+  switch(type){
+    case "shot": if(!thr("shot",30)) break; if(arg==="sr"||arg==="rg") aNoise(0.18,0.32,900); else if(arg==="sg") aNoise(0.12,0.38,1800); else aTone(210+Math.random()*40,0.06,"square",0.16,120); break;
+    case "reload": aTone(300,0.05,"square",0.13); setTimeout(()=>aTone(440,0.05,"square",0.11),120); break;
+    case "reloadDone": aTone(660,0.08,"square",0.14,900); break;
+    case "hit": if(thr("hit",45)) aNoise(0.05,0.16,1200); break;
+    case "ric": if(thr("ric",60)) aTone(1800+Math.random()*700,0.05,"square",0.09,3200); break;
+    case "boom": if(thr("boom",60)){ aNoise(0.45,0.45,500); aTone(80,0.4,"sine",0.28,40); } break;
+    case "death": if(thr("death",50)) aTone(200,0.12,"sawtooth",0.13,80); break;
+    case "hurt": if(thr("hurt",220)) aTone(150,0.18,"sawtooth",0.22,70); break;
+    case "alert": aTone(440,0.5,"sine",0.28,900); break;
+    case "drop": aTone(120,0.6,"sawtooth",0.24,210); break;
+    case "obj": aTone(523,0.12,"sine",0.24); setTimeout(()=>aTone(784,0.18,"sine",0.24),120); break;
+    case "buy": aTone(880,0.07,"square",0.18); setTimeout(()=>aTone(1320,0.09,"square",0.16),80); break;
+    case "throw": aNoise(0.1,0.13,800); break;
+    case "deploy": aTone(300,0.15,"square",0.18,520); break;
+    case "win": [523,659,784,1047].forEach((f,i)=>setTimeout(()=>aTone(f,0.25,"sine",0.28),i*150)); break;
+    case "lose": [400,300,200].forEach((f,i)=>setTimeout(()=>aTone(f,0.4,"sawtooth",0.28),i*230)); break;
+  }
+}
 
 //---------------- 구매 UI (2단계) ----------------
 function toggleBuy(){ buyOpen=!buyOpen; if(buyOpen){ buyStage="main"; renderBuy(); buyMenu.classList.remove("hidden"); } else buyMenu.classList.add("hidden"); }
@@ -411,20 +444,20 @@ function buyWeapon(idx){
   player.credits-=w.cost;
   const ang=Math.random()*Math.PI*2, d=70+Math.random()*60;
   pods.push({ x:player.x+Math.cos(ang)*d, y:player.y+Math.sin(ang)*d, z:760, wi:idx, landed:false });
-  pushLog(`📦 ${w.name} 주문! 캡슐 투하 중... (-${w.cost}C)`, w.color); toast(`📦 ${w.name} 투하!`);
+  sfx("buy"); pushLog(`📦 ${w.name} 주문! 캡슐 투하 중... (-${w.cost}C)`, w.color); toast(`📦 ${w.name} 투하!`);
   toggleBuy();   // 구매 완료 → 구매창 자동 닫힘
 }
 function buyTurret(v){
   const t=TURRET_VARIANTS[v];
   if(player.credits<t.cost){ pushLog(`⚠️ 자금 부족 — ${t.name} (${t.cost}C 필요)`,"#ff8a8a"); renderBuy(); return; }
-  player.credits-=t.cost; beacons.push({cat:"turret",variant:v,color:t.color,name:t.name}); heldBeacon=beacons.length-1;
+  player.credits-=t.cost; beacons.push({cat:"turret",variant:v,color:t.color,name:t.name}); heldBeacon=beacons.length-1; sfx("buy");
   pushLog(`📡 ${t.name} 신호기 획득! 던져서 설치 · 클릭=투척 (-${t.cost}C)`,t.color); toast(`📡 ${t.name} 신호기!`);
   toggleBuy();   // 구매 완료 → 구매창 자동 닫힘(들고 있는 상태로 시작)
 }
 function buyBomb(v){
   const cost=BOMB_COST[v], b=BOMB_TYPES[v];
   if(player.credits<cost){ pushLog(`⚠️ 자금 부족 — ${b.name} (${cost}C 필요)`,"#ff8a8a"); renderBuy(); return; }
-  player.credits-=cost; beacons.push({cat:"bomb",variant:v,color:b.color,name:b.name}); heldBeacon=beacons.length-1;
+  player.credits-=cost; beacons.push({cat:"bomb",variant:v,color:b.color,name:b.name}); heldBeacon=beacons.length-1; sfx("buy");
   pushLog(`📡 ${b.name} 신호기 획득! 던져서 폭격 · 클릭=투척 (-${cost}C)`,b.color); toast(`📡 ${b.name} 신호기!`);
   toggleBuy();   // 구매 완료 → 구매창 자동 닫힘(들고 있는 상태로 시작)
 }
@@ -451,12 +484,13 @@ function coverBetween(x0,y0,x1,y1){ const n=Math.ceil(Math.hypot(x1-x0,y1-y0)/12
 function startReload(w){
   if(w.reloading>0 || w.mag>=w.magSize) return;
   if(w.cat==="power" && w.reserve<=0) return;
-  w.reloading=w.reload; pushLog(`🔄 ${w.name} 재장전...`,"#cccccc");
+  w.reloading=w.reload; sfx("reload"); pushLog(`🔄 ${w.name} 재장전...`,"#cccccc");
 }
 function updateReload(dt){
   for(const w of WEAPONS){ if(w.reloading>0){ w.reloading-=dt; if(w.reloading<=0){ w.reloading=0;
     if(w.cat==="basic"){ w.mag=w.magSize; }
-    else { const take=Math.min(w.magSize-w.mag,w.reserve); w.mag+=take; w.reserve-=take; } } } }
+    else { const take=Math.min(w.magSize-w.mag,w.reserve); w.mag+=take; w.reserve-=take; }
+    if(slots[activeSlot].type==="gun" && slots[activeSlot].wi!=null && WEAPONS[slots[activeSlot].wi]===w) sfx("reloadDone"); } } }
 }
 function shoot(){
   const w=activeGun(); if(!w || w.reloading>0 || fireCD>0) return;
@@ -481,6 +515,7 @@ function shoot(){
         life,fromPlayer:true,color:w.color,hits:[]});
     }
   }
+  sfx("shot",w.id);
   // 스프레드 증가(한계까지)
   spreadCur=Math.min(w.spreadMax, spreadCur+w.spreadShot);
   // 반동: 이동 중이면 크게. 수직은 항상 바깥(에임)으로, 좌우는 번갈아
@@ -500,7 +535,7 @@ function useTactical(){
     const wm=worldMouse(); let tx=wm.x,ty=wm.y; const a=player.aim,maxR=440;
     const d=Math.hypot(tx-player.x,ty-player.y); if(d>maxR){ tx=player.x+Math.cos(a)*maxR; ty=player.y+Math.sin(a)*maxR; }
     grenades.push({sx:player.x,sy:player.y,x:player.x,y:player.y,tx,ty,t:0,dur:0.65,z:0,dmg:t.dmg,radius:t.radius,pen:3,color:t.color});
-    pushLog(`💣 ${t.name} 투척!`,t.color);
+    sfx("throw"); pushLog(`💣 ${t.name} 투척!`,t.color);
   } else {  // 자동 포탑 설치(현재 선택된 종류)
     const v=TURRET_VARIANTS[turretVariant];
     turrets.push({x:player.x+Math.cos(player.aim)*34,y:player.y+Math.sin(player.aim)*34,ang:player.aim,life:t.life,cd:0,active:false,
@@ -515,11 +550,11 @@ function throwHeldBeacon(){
   const wm=worldMouse(); let tx=wm.x,ty=wm.y; const a=player.aim,maxR=520;
   const d=Math.hypot(tx-player.x,ty-player.y); if(d>maxR){ tx=player.x+Math.cos(a)*maxR; ty=player.y+Math.sin(a)*maxR; }
   beaconThrows.push({sx:player.x,sy:player.y,x:player.x,y:player.y,tx,ty,t:0,dur:0.7,z:0,cat:item.cat,variant:item.variant,color:item.color,landed:false});
-  pushLog(`📡 ${item.name} 신호기 투척!`,item.color);
+  sfx("throw"); pushLog(`📡 ${item.name} 신호기 투척!`,item.color);
   setSlot(0);   // 사용 후 기본 무기(슬롯1)로 복귀
 }
 function deployTurretAt(x,y,v){
-  const vv=TURRET_VARIANTS[v];
+  const vv=TURRET_VARIANTS[v]; sfx("deploy");
   turrets.push({x,y,ang:0,life:18,cd:0,active:false,variant:v,fireDelay:vv.fireDelay,dmg:vv.dmg,pen:vv.pen,range:vv.range,splash:vv.splash||0,flame:vv.flame||false,coneHalf:vv.cone||0,burn:vv.burn||0,color:vv.color});
   pushLog(`🛡️ ${vv.name} 전개!`,vv.color); toast(`🛡️ ${vv.name} 전개!`);
 }
@@ -533,10 +568,10 @@ function damageEnemy(e,dmg,pen){
   if(!e.aggro){ e.aggro=true; e.alerted=false; e.alertT=3; }   // 피격 시 전투 개시(3초 뒤 주변 전파)
   const pierced = pen>=e.type.armor;
   const eff = pierced ? dmg : dmg*0.08;
-  if(pierced) spawnBlood(e.x,e.y);                                   // 관통 → 피구름
-  else { spawnRicochet(e.x,e.y); if(e.bounce<=0){ e.bounce=0.5; pushLog(`🛡️ ${e.type.name}의 ${ARMOR_NAME[e.type.armor]}에 도탄!`,"#9fbfff"); } }  // 비관통 → 도탄
+  if(pierced){ spawnBlood(e.x,e.y); sfx("hit"); }                    // 관통 → 피구름
+  else { spawnRicochet(e.x,e.y); sfx("ric"); if(e.bounce<=0){ e.bounce=0.5; pushLog(`🛡️ ${e.type.name}의 ${ARMOR_NAME[e.type.armor]}에 도탄!`,"#9fbfff"); } }  // 비관통 → 도탄
   e.hp-=eff; e.hit=0.1;
-  if(e.hp<=0){ e.alive=false; kills++; player.credits+=e.type.reward; speedUpCooldown(1); pushLog(`💀 ${e.type.name} +${e.type.reward}C`,"#7CFFB2"); }
+  if(e.hp<=0){ e.alive=false; kills++; player.credits+=e.type.reward; speedUpCooldown(1); sfx("death"); pushLog(`💀 ${e.type.name} +${e.type.reward}C`,"#7CFFB2"); }
 }
 
 //---------------- 월드 적 배치 (수비대 + 순찰대) ----------------
@@ -546,16 +581,23 @@ function spawnEnemy(kind,x,y,role,home,pg){
     role,home:home||{x,y},aggro:false,burn:0,burnTick:0,face:Math.random()*7,vis:340,fov:0.9,pg:(pg==null?null:pg)});
 }
 function repickWP(pg){ patrolWP[pg]={x:WALL+150+Math.random()*(WORLD.w-WALL*2-300),y:WALL+150+Math.random()*(WORLD.h-WALL*2-300)}; }
-function alertNearby(e){ for(const o of enemies){ if(o.alive && !o.aggro && Math.hypot(o.x-e.x,o.y-e.y)<240){ o.aggro=true; o.alerted=false; o.alertT=3; } } }  // 주변/동료 경보(이들도 3초 뒤 재전파)
+function alertNearby(e){ for(const o of enemies){ if(o.alive && !o.aggro && Math.hypot(o.x-e.x,o.y-e.y)<1100){ o.aggro=true; o.alerted=false; o.alertT=3; } } }  // 광역 경보 — 잘못 건드리면 우르르 몰려옴(이들도 3초 뒤 재전파)
 function populateWorld(){   // 경장갑(감염체) 위주 · 대규모 배치
   // 미션 지역 수비대 (요새는 더 넓고 많음)
+  function spawnGuard(px,py){ let kind="infected"; const rr=Math.random(); if(rr>0.92) kind="mech"; if(rr>0.985) kind="heavy"; spawnEnemy(kind,px,py,"guard",{x:px,y:py}); }
   for(const o of objectives){
-    const n = o.fort ? (40+Math.floor(Math.random()*24)) : (8+Math.floor(Math.random()*5));
-    for(let i=0;i<n;i++){ let kind="infected"; const rr=Math.random(); if(rr>0.92) kind="mech"; if(rr>0.985) kind="heavy";
-      let px,py;
-      if(o.fort){ const a=Math.random()*7,d=Math.random()*FORT_S*0.78; px=o.x+Math.cos(a)*d; py=o.y+Math.sin(a)*d; }
-      else { const a=(i/n)*6.283+Math.random()*0.9, d=o.r+110+Math.random()*240; px=o.x+Math.cos(a)*d; py=o.y+Math.sin(a)*d; }  // 미션 외곽 링에 분산
-      spawnEnemy(kind,px,py,"guard",{x:px,y:py}); } }   // 자기 자리를 지킴(미션 중앙에 모이지 않음)
+    if(o.fort){   // 요새 내부에 여러 분대로 밀집
+      const clusters=6+Math.floor(Math.random()*4);
+      for(let c=0;c<clusters;c++){ const a=Math.random()*7,d=Math.random()*FORT_S*0.75, ax=o.x+Math.cos(a)*d, ay=o.y+Math.sin(a)*d;
+        const gn=4+Math.floor(Math.random()*5);
+        for(let g=0;g<gn;g++) spawnGuard(ax+(Math.random()-0.5)*90, ay+(Math.random()-0.5)*90); }
+    } else {      // 미션 외곽에 2~3개 분대(뭉쳐서) 배치
+      const groups=2+Math.floor(Math.random()*2);
+      for(let c=0;c<groups;c++){ const a=(c/groups)*6.283+Math.random()*0.6, d=o.r+140+Math.random()*200, ax=o.x+Math.cos(a)*d, ay=o.y+Math.sin(a)*d;
+        const gn=2+Math.floor(Math.random()*3);
+        for(let g=0;g<gn;g++) spawnGuard(ax+(Math.random()-0.5)*70, ay+(Math.random()-0.5)*70); }
+    }
+  }
   // 순찰대 — 그룹 단위로 뭉쳐 이동
   patrolWP=[];
   const groups=22;
@@ -620,23 +662,29 @@ function updateEnemies(dt){
 
 //---------------- 신호탄 → 드랍쉽 증원 ----------------
 function updateFlareLogic(dt,alive){
-  if(reinforceActive || reinforceCD>0){ flareTimer=-1; return; }   // 진행 중이거나 글로벌 쿨 중이면 불가
-  const aggroed=alive.filter(e=>e.aggro && dist(player,e)<800);
-  if(aggroed.length>=3){
-    if(flareTimer<0) flareTimer=6+Math.random()*5;
+  if(flare || reinforceCD>0){ flareTimer=-1; return; }   // 신호탄 진행 중이거나 쿨 중이면 불가(스폰 시작 시 쿨 시작)
+  const aggroed=alive.filter(e=>e.aggro && dist(player,e)<900);
+  if(aggroed.length>=2){
+    if(flareTimer<0) flareTimer=3+Math.random()*3;   // 교전 시작 후 더 빨리 발동
     flareTimer-=dt;
     if(flareTimer<=0){ const s=aggroed[0]; fireFlare(s.x,s.y); flareTimer=-1; }
   } else flareTimer=-1;
 }
 function fireFlare(x,y){
-  flare={x,y,z:0,t:0,spawned:false}; reinforceActive=true;
+  flare={x,y,z:0,t:0,spawned:false}; reinforceActive=true; sfx("alert");
   pushLog("🔴 적이 신호탄을 쏘아 올렸다! 드랍쉽 접근 중...","#ff5d5d"); toast("🔴 신호탄! 드랍쉽 접근!");
 }
+const REINFORCE_CD=15;   // 스폰 후 재증원 쿨타임(초)
 function spawnDropships(x,y){
   const n=2+Math.floor(Math.random()*2);   // 한 번에 2~3대
-  for(let i=0;i<n;i++){ const sx=Math.random()<0.5?-180:WORLD.w+180, sy=WALL+120+Math.random()*(WORLD.h-WALL*2-240);
-    dropships.push({x:sx,y:sy,tx:x+(Math.random()-0.5)*240,ty:y+(Math.random()-0.5)*240,hp:120,maxhp:120,spd:780,r:34,state:"incoming",dropTimer:0,bounceMsg:0}); }
-  pushLog(`🚁 드랍쉽 ${n}대 접근! 중장갑↑ 무기로 격추 가능`,"#ffd45d");
+  for(let i=0;i<n;i++){
+    const tx=x+(Math.random()-0.5)*240, ty=y+(Math.random()-0.5)*240;
+    const fromLeft = tx < WORLD.w/2;                       // 표적과 같은 쪽에서 진입(거리 단축)
+    const sx = fromLeft ? -180 : WORLD.w+180, sy = ty+(Math.random()-0.5)*180;
+    const dd = Math.hypot(tx-sx, ty-sy), spd = Math.max(1000, dd/2.4);   // 약 2.4초 내 도착
+    dropships.push({x:sx,y:sy,tx,ty,hp:120,maxhp:120,spd,r:34,state:"incoming",dropTimer:0,bounceMsg:0}); }
+  reinforceCD=REINFORCE_CD;   // 스폰하는 순간 쿨타임 시작
+  sfx("drop"); pushLog(`🚁 드랍쉽 ${n}대 고속 접근! 중장갑↑ 무기로 격추 가능`,"#ffd45d");
 }
 function dropTroops(s){
   const n=3+Math.floor(Math.random()*3);
@@ -647,21 +695,19 @@ function dropTroops(s){
 }
 function destroyDropship(s){ craters.push({x:s.x,y:s.y,t:0.7,r:90}); pushLog("💥 드랍쉽 격추! 증원 차단 성공","#7CFFB2"); toast("💥 드랍쉽 격추!"); }
 function updateReinforcements(dt){
-  if(flare){ flare.t+=dt; flare.z=Math.min(420,flare.z+760*dt);
-    if(flare.t>=1.0 && !flare.spawned){ flare.spawned=true; spawnDropships(flare.x,flare.y); }
-    if(flare.t>=1.7) flare=null; }
+  if(flare){ flare.t+=dt; flare.z=Math.min(420,flare.z+900*dt);
+    if(flare.t>=0.5 && !flare.spawned){ flare.spawned=true; spawnDropships(flare.x,flare.y); }
+    if(flare.t>=1.1) flare=null; }
   for(const s of dropships){ if(s.bounceMsg>0) s.bounceMsg-=dt;
     if(s.state==="incoming"){ const dx=s.tx-s.x,dy=s.ty-s.y,d=Math.hypot(dx,dy);
       if(d>6){ s.x+=dx/d*s.spd*dt; s.y+=dy/d*s.spd*dt; } else { s.state="hovering"; s.dropTimer=2.0; } }
     else if(s.state==="hovering"){ s.dropTimer-=dt; if(s.dropTimer<=0){ dropTroops(s); s.state="leaving"; s.lx=s.x<WORLD.w/2?-220:WORLD.w+220; } }
     else if(s.state==="leaving"){ s.x+=Math.sign(s.lx-s.x)*s.spd*dt; if(s.x<-200||s.x>WORLD.w+200) s.dead=true; } }
   dropships=dropships.filter(s=>!s.dead);
-  // 글로벌 쿨타임은 시간이 지나면서 감소
+  // 쿨타임은 스폰 시 시작되어 시간이 지나며 감소(+유저 액션으로 단축)
   if(reinforceCD>0) reinforceCD=Math.max(0,reinforceCD-dt);
-  // 증원 부대(드랍쉽+투하병)를 모두 소탕하면 → 30초 글로벌 쿨타임 시작
-  if(reinforceActive && !flare && dropships.length===0 && !enemies.some(e=>e.alive && e.reinforce)){
-    reinforceActive=false; reinforceCD=30; pushLog("✅ 증원 부대 소탕! 재증원까지 30초","#7CFFB2");
-  }
+  // HUD 표시용: 신호탄/드랍쉽이 모두 사라지면 '진행 중' 해제
+  if(reinforceActive && !flare && dropships.length===0) reinforceActive=false;
 }
 function speedUpCooldown(amt){ if(reinforceCD>0) reinforceCD=Math.max(0,reinforceCD-amt); }  // 유저 액션 시 쿨 단축
 
@@ -688,7 +734,7 @@ function dropBomb(b,T){   // 하늘에서 떨어지는 폭탄 생성 (착탄 시
   fallingBombs.push({x,y,z:540+Math.random()*160,vz:820,blast:T.blast,dmg:T.dmg,pen:T.pen,fireR:T.fireR||0,fireLife:T.fireLife||0});
 }
 function impactBomb(fb){
-  craters.push({x:fb.x,y:fb.y,t:0.45,r:fb.blast});
+  craters.push({x:fb.x,y:fb.y,t:0.45,r:fb.blast}); sfx("boom");
   for(const e of enemies) if(e.alive && Math.hypot(e.x-fb.x,e.y-fb.y)<=fb.blast) damageEnemy(e,fb.dmg,fb.pen);
   damageDepotsAt(fb.x,fb.y,fb.blast,fb.dmg);
   if(fb.fireR) firePatches.push({x:fb.x,y:fb.y,r:fb.fireR,life:fb.fireLife});
@@ -703,7 +749,7 @@ function rodStrike(b,T){
   damageDepotsAt(tx,ty,T.splash,T.dmg);
   // 드랍쉽도 강하로 격추
   for(const s of dropships){ if(s.state!=="leaving" && Math.hypot(s.x-tx,s.y-ty)<=T.splash+s.r){ s.hp=0; s.dead=true; destroyDropship(s); } }
-  pushLog("⚡ 신의 지팡이 강하!","#bfe6ff"); toast("⚡ 신의 지팡이!");
+  sfx("boom"); pushLog("⚡ 신의 지팡이 강하!","#bfe6ff"); toast("⚡ 신의 지팡이!");
 }
 function updateBombs(dt){
   // 던져진 신호기(수류탄과 동일한 포물선)
@@ -753,11 +799,11 @@ function updateBullets(dt){
   }
   bullets=bullets.filter(b=>b.life>0);
 }
-function explode(b){ craters.push({x:b.x,y:b.y,t:0.5,r:b.splash});
+function explode(b){ craters.push({x:b.x,y:b.y,t:0.5,r:b.splash}); sfx("boom");
   for(const e of enemies){ if(e.alive && Math.hypot(e.x-b.x,e.y-b.y)<=b.splash) damageEnemy(e,b.dmg*0.7,b.pen); }
   damageDepotsAt(b.x,b.y,b.splash,b.dmg*0.7); }
 let damageTimer=0;
-function flashDamage(){ damageEl.style.opacity="1"; damageTimer=0.15; }
+function flashDamage(){ damageEl.style.opacity="1"; damageTimer=0.15; sfx("hurt"); }
 
 //---------------- 투척/설치 업데이트 ----------------
 function updateTacticals(dt){
@@ -765,7 +811,7 @@ function updateTacticals(dt){
   for(const t of TACTICALS){ if(t.charges<t.max){ t.rt+=dt; if(t.rt>=t.regen){ t.rt=0; t.charges++; } } }
   for(const g of grenades){ g.t+=dt; const p=Math.min(1,g.t/g.dur);
     g.x=g.sx+(g.tx-g.sx)*p; g.y=g.sy+(g.ty-g.sy)*p; g.z=Math.sin(p*Math.PI)*70;
-    if(p>=1 && !g.exploded){ g.exploded=true; craters.push({x:g.tx,y:g.ty,t:0.6,r:g.radius});
+    if(p>=1 && !g.exploded){ g.exploded=true; craters.push({x:g.tx,y:g.ty,t:0.6,r:g.radius}); sfx("boom");
       const gp=g.pen!=null?g.pen:3;
       for(const e of enemies) if(e.alive && Math.hypot(e.x-g.tx,e.y-g.ty)<=g.radius) damageEnemy(e,g.dmg,gp);
       damageDepotsAt(g.tx,g.ty,g.radius,g.dmg); } }
@@ -830,12 +876,12 @@ function updateObjectives(dt){
   for(const o of objectives){ if(o.done) continue;
     if(dist(player,o)<o.r){ o.prog+=(100/OBJ_HOLD)*dt; speedUpCooldown(dt);   // 미션 게이지 진행 시 쿨 단축
       if(o.prog>=100){ o.done=true; player.credits+=300;
-      const n=objectives.filter(x=>x.done).length; pushLog(`✅ ${o.name} 완료! +300C (${n}/${objectives.length})`,"#7CFFB2"); toast(`✅ ${o.name} 완료!`); } } }
+      const n=objectives.filter(x=>x.done).length; sfx("obj"); pushLog(`✅ ${o.name} 완료! +300C (${n}/${objectives.length})`,"#7CFFB2"); toast(`✅ ${o.name} 완료!`); } } }
 }
 function callRocket(){
   if(rocket.state!=="idle") return;
   if(dist(player,EXIT)>EXIT.r){ pushLog("🚁 탈출 지점(맵 우상단)에서 [E]를 눌러 호출하세요.","#ff8a8a"); return; }
-  rocket.state="incoming"; rocket.z=1000; pushLog("🚀 탈출 로켓 호출! 강하 중...","#ffd45d"); toast("🚀 로켓 호출!");
+  rocket.state="incoming"; rocket.z=1000; sfx("alert"); pushLog("🚀 탈출 로켓 호출! 강하 중...","#ffd45d"); toast("🚀 로켓 호출!");
 }
 function updateExtraction(dt){
   if(rocket.state==="incoming"){ rocket.z-=620*dt; if(rocket.z<=0){ rocket.z=0; rocket.state="landed"; rocket.timer=30;
@@ -844,9 +890,9 @@ function updateExtraction(dt){
     if(dist(player,EXIT)<EXIT.r){ rocket.timer-=dt; speedUpCooldown(dt); if(rocket.timer<=0) winGame(); }  // 탈출 게이지 진행 시 쿨 단축
   }
 }
-function winGame(){ running=false; rocket.state="win"; const n=objectives.filter(o=>o.done).length;
+function winGame(){ running=false; rocket.state="win"; sfx("win"); const n=objectives.filter(o=>o.done).length;
   showOverlay("🏆 탈출 성공",`목표 ${n}/${objectives.length} 완료 · 처치 ${kills} · 잔액 ${Math.floor(player.credits)}C`,"다시 출격",true); }
-function overGame(){ running=false; const n=objectives.filter(o=>o.done).length;
+function overGame(){ running=false; sfx("lose"); const n=objectives.filter(o=>o.done).length;
   showOverlay("💀 작전 실패",`전선이 무너졌다. 목표 ${n}/${objectives.length} · 처치 ${kills}.`,"재출격",true); }
 
 //==================================================================
