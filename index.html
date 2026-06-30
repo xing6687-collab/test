@@ -29,6 +29,7 @@
   #hint{position:absolute;bottom:14px;right:14px;text-align:right;font-size:13px;line-height:1.6;color:#cfcfcf;}
   #hint .k{color:#9fe0ff;}
   #log{position:absolute;bottom:64px;left:14px;font-size:13px;line-height:1.5;max-width:420px;}
+  body.touch #weapon-info, body.touch #hint{display:none !important;}   /* 모바일: 무기정보는 슬롯 버튼에 통합, 키보드 힌트 숨김 */
 
   /* 구매 UI — 게임을 가리지 않도록 박스만 표시(배경 클릭은 캔버스로 통과) */
   #buyMenu{position:fixed;inset:0;display:flex;align-items:center;justify-content:safe center;z-index:8;pointer-events:none;padding:10px;overflow:auto;}
@@ -505,7 +506,7 @@ addEventListener("resize",resize); resize();
 //---------------- 입력 ----------------
 addEventListener("keydown",e=>{
   keys[e.code]=true;
-  if(e.code==="KeyM"){ isTouch=!isTouch; pushLog(isTouch?"📱 모바일 HUD 미리보기 ON (마우스로 조작)":"🖥️ 모바일 HUD OFF","#9fe0ff"); return; }   // PC 테스트용 토글
+  if(e.code==="KeyM"){ setTouch(!isTouch); pushLog(isTouch?"📱 모바일 HUD 미리보기 ON (마우스로 조작)":"🖥️ 모바일 HUD OFF","#9fe0ff"); return; }   // PC 테스트용 토글
   if(e.code==="KeyB" && running){ toggleBuy(); e.preventDefault(); return; }
   if(e.code==="Escape"){ if(buyOpen) toggleBuy(); else pause(); return; }
   if(running && buyOpen){
@@ -550,34 +551,36 @@ let isTouch=false, touchMove={active:false,x:0,y:0,mag:0}, mapHold=false, mapHol
 let lj={active:false,id:-1,ox:0,oy:0,x:0,y:0,mag:0}, rj={active:false,id:-1,ox:0,oy:0,ang:0,mag:0};
 const JR=72;   // 조이스틱 반경
 canvas.style.touchAction="none";
-try{ if(window.matchMedia && matchMedia("(pointer:coarse)").matches) isTouch=true; }catch(e){}   // 터치 기기는 처음부터 모바일 HUD 표시
+function setTouch(v){ isTouch=v; try{ document.body.classList.toggle("touch",v); }catch(e){} }
+try{ if(window.matchMedia && matchMedia("(pointer:coarse)").matches) setTouch(true); }catch(e){}   // 터치 기기는 처음부터 모바일 HUD 표시
 function tpos(e){ const r=canvas.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top}; }
-canvas.addEventListener("pointerdown",e=>{ if(e.pointerType==="mouse" && !isTouch) return; isTouch=true;
+canvas.addEventListener("pointerdown",e=>{ if(e.pointerType==="mouse" && !isTouch) return; setTouch(true);
   if(!running||buyOpen) return; const p=tpos(e);
-  for(const b of mobBtns()){ if(Math.hypot(p.x-b.x,p.y-b.y)<b.r){ if(b.id==="map"){ mapHold=true; mapHoldId=e.pointerId; } else b.on(); e.preventDefault(); return; } }   // 액션 버튼(🗺️는 홀드)
+  for(const b of mobBtns()){ if(btnHit(b,p.x,p.y)){ if(b.id==="map"){ mapHold=true; mapHoldId=e.pointerId; } else b.on(); e.preventDefault(); return; } }   // 액션 버튼(🗺️는 홀드)
   if(p.x<W*0.5 && !lj.active){ lj.active=true; lj.id=e.pointerId; lj.ox=p.x; lj.oy=p.y; lj.x=p.x; lj.y=p.y; lj.mag=0; }
   else if(p.x>=W*0.5 && !rj.active){ rj.active=true; rj.id=e.pointerId; rj.ox=p.x; rj.oy=p.y; rj.ang=player.aim; rj.mag=0;
     const gunMode = heldBeacon<0 && slots[activeSlot].type==="gun";
     if(gunMode) primaryDown(); else throwAim=true;   // 투척류(수류탄/신호기)=고스트 조준 후 떼면 투척
   }
   e.preventDefault(); },{passive:false});
-function mobBtns(){ const u=Math.max(32,Math.min(46,Math.min(W,H)*0.066));
-  const g=u*2.6;                       // 버튼 간격(중심거리) — 넉넉히
-  const ix=u*1.8, ex=W-u*1.8, ey=H-u*1.8;   // 가장자리에서 더 안쪽으로
-  const su=u*0.8, sy=ey-g*0.55, sx=W/2;      // 슬롯: 화면 중앙·약간 위로
-  return [
-    {id:"pause", x:ix,        y:u*1.6,  r:u*0.78, ic:"⏸",  on:()=>pause()},
-    {id:"map",   x:ex,        y:u*1.6,  r:u*0.78, ic:"🗺️", on:()=>{}},   // 꾹 누르면 큰 지도(홀드 처리)
-    {id:"buy",   x:ex-g,      y:u*1.6,  r:u*0.78, ic:"🛒", on:()=>toggleBuy()},
-    {id:"rocket",x:ex-g*2,    y:u*1.6,  r:u*0.78, ic:"🚀", on:()=>callRocket()},
-    {id:"reload",x:ex,        y:ey,     r:u,      ic:"⟳",  on:()=>{const w=activeGun(); if(w) startReload(w);}},
-    {id:"slide", x:ex-g,      y:ey,     r:u,      ic:"💨", on:()=>startSlide()},
-    {id:"medkit",x:ex,        y:ey-g,   r:u,      ic:"💉", on:()=>startHeal()},
-    {id:"beacon",x:ex-g,      y:ey-g,   r:u,      ic:"📡", on:()=>{ if(beacons.length) heldBeacon=(heldBeacon+1)%beacons.length; else pushLog("📡 신호기 없음(구매 🛒)","#ff8a8a"); }},
-    {id:"s1",    x:sx-g,      y:sy,     r:su,     ic:"1",  on:()=>{heldBeacon=-1; setSlot(0);}},
-    {id:"s2",    x:sx,        y:sy,     r:su,     ic:"2",  on:()=>{heldBeacon=-1; setSlot(1);}},
-    {id:"s3",    x:sx+g,      y:sy,     r:su,     ic:"3",  on:()=>{ if(activeSlot===2) slots[2].ti=(slots[2].ti+1)%TACTICALS.length; else { heldBeacon=-1; setSlot(2);} }},
+function btnHit(b,px,py){ return b.rect ? (Math.abs(px-b.x)<b.w/2 && Math.abs(py-b.y)<b.h/2) : (Math.hypot(px-b.x,py-b.y)<b.r); }
+function mobBtns(){ const u=Math.max(30,Math.min(44,Math.min(W,H)*0.062));
+  const g=u*2.4, te=u*0.95;                        // 상단 모서리 밀착
+  const sw=u*2.0, sh=u*1.15, ssp=sw+6, sy=H-sh*0.62, sx=W/2-ssp;   // 무기 슬롯(정보 통합)
+  const list=[
+    {id:"pause", x:te,       y:te, r:u*0.7, ic:"⏸",  on:()=>pause()},
+    {id:"buy",   x:W-te,     y:te, r:u*0.7, ic:"🛒", on:()=>toggleBuy()},
+    {id:"map",   x:W-te-g,   y:te, r:u*0.7, ic:"🗺️", on:()=>{}},
+    {id:"reload",x:W-u*1.4,  y:H-u*1.4,   r:u, ic:"⟳",  on:()=>{const w=activeGun(); if(w) startReload(w);}},
+    {id:"slide", x:W-u*1.4-g,y:H-u*1.4,   r:u, ic:"💨", on:()=>startSlide()},
+    {id:"s1", rect:true, x:sx,       y:sy, w:sw, h:sh, slot:0, on:()=>{heldBeacon=-1; setSlot(0);}},
+    {id:"s2", rect:true, x:sx+ssp,   y:sy, w:sw, h:sh, slot:1, on:()=>{heldBeacon=-1; setSlot(1);}},
+    {id:"s3", rect:true, x:sx+ssp*2, y:sy, w:sw, h:sh, slot:2, on:()=>{ if(activeSlot===2) slots[2].ti=(slots[2].ti+1)%TACTICALS.length; else { heldBeacon=-1; setSlot(2);} }},
+    {id:"medkit", x:sx+ssp*2 + sw/2 + u*1.0, y:sy, r:u*0.92, ic:"💉", med:true, on:()=>startHeal()},
   ];
+  if(Math.hypot(player.x-EXIT.x,player.y-EXIT.y) < (EXIT.r||60)+90)   // 탈출 지점 진입 시에만 우중앙에 탈출 버튼
+    list.push({id:"extract", x:W-u*1.5, y:H*0.5, r:u*1.05, ic:"🚀", hot:true, on:()=>callRocket()});
+  return list;
 }
 canvas.addEventListener("pointermove",e=>{ if(e.pointerType==="mouse" && !isTouch) return; const p=tpos(e);
   if(e.pointerId===lj.id){ let dx=p.x-lj.ox,dy=p.y-lj.oy,d=Math.hypot(dx,dy); if(d>JR){ dx*=JR/d; dy*=JR/d; d=JR; } lj.x=lj.ox+dx; lj.y=lj.oy+dy; lj.mag=d/JR;
@@ -840,7 +843,7 @@ function buyAir(v){
 }
 
 //---------------- 좌표 / 충돌 ----------------
-function camZoom(){ return isTouch?0.75:1; }   // 모바일은 줌아웃(멀리 보기)
+function camZoom(){ return isTouch?0.6:1; }   // 모바일은 줌아웃(멀리 보기)
 function worldMouse(){ const z=camZoom(); return { x:cam.x+mouse.x/z, y:cam.y+mouse.y/z }; }
 // 크로스헤어 = 마우스 위치 + 반동 오프셋(에임방향=수직, 수직방향=좌우)
 function crosshairScreen(){ const ax=Math.cos(player.aim),ay=Math.sin(player.aim),px=-ay,py=ax;
@@ -1940,6 +1943,7 @@ function render(){
   drawMedkitHUD();
   drawTouchHUD();
 }
+function roundRect(x,y,w,h,r){ r=Math.min(r,w/2,h/2); ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 function drawThrowGhost(){ if(!throwAim||!rj.active) return;
   const wm=worldMouse(); let dx=wm.x-player.x,dy=wm.y-player.y,d=Math.hypot(dx,dy)||1; const maxR=heldBeacon>=0?520:440; if(d>maxR){ dx*=maxR/d; dy*=maxR/d; }
   const tx=player.x+dx, ty=player.y+dy, col=heldBeacon>=0?((beacons[heldBeacon]&&beacons[heldBeacon].color)||"#ff8a3a"):"#7CFFB2";
@@ -1953,10 +1957,29 @@ function drawTouchHUD(){
   // 액션 버튼
   ctx.textAlign="center"; ctx.textBaseline="middle";
   for(const b of mobBtns()){
-    const act=(b.id==="s1"&&activeSlot===0)||(b.id==="s2"&&activeSlot===1)||(b.id==="s3"&&activeSlot===2);
-    ctx.globalAlpha=0.34; ctx.fillStyle=act?"#7CFFB2":"#0d1016"; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,7); ctx.fill();
-    ctx.globalAlpha=0.7; ctx.strokeStyle=act?"#7CFFB2":"#6a7686"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,7); ctx.stroke();
-    ctx.globalAlpha=1; ctx.fillStyle="#eef"; ctx.font=Math.round(b.r*0.9)+"px sans-serif"; ctx.fillText(b.ic,b.x,b.y+1);
+    if(b.rect){   // 무기 슬롯 = 정보 통합 버튼(이름+탄약)
+      const act=activeSlot===b.slot, sl=slots[b.slot];
+      let nm,am,empty=false;
+      if(sl.type==="gun"){ if(sl.wi==null){ nm=(b.slot+1)+". 없음"; am="-"; empty=true; } else { const w=WEAPONS[sl.wi]; nm=(b.slot+1)+". "+w.name; am=ammoText(w); } }
+      else { const t=TACTICALS[sl.ti]; nm=(b.slot+1)+". "+(t.kind==="turret"?("포탑·"+TURRET_VARIANTS[turretVariant].name):t.name); am=t.charges+" / "+t.max; }
+      const x=b.x-b.w/2, y=b.y-b.h/2;
+      ctx.globalAlpha=act?0.5:0.32; ctx.fillStyle=act?"#1d3a2a":"#0d1016"; roundRect(x,y,b.w,b.h,8); ctx.fill();
+      ctx.globalAlpha=0.85; ctx.strokeStyle=act?"#7CFFB2":(empty?"#555":"#6a7686"); ctx.lineWidth=act?3:2; roundRect(x,y,b.w,b.h,8); ctx.stroke();
+      ctx.globalAlpha=1; ctx.fillStyle=empty?"#777":(act?"#dffded":"#cfd6e0"); ctx.font="bold "+Math.round(b.h*0.28)+"px sans-serif"; ctx.fillText(nm,b.x,b.y-b.h*0.20);
+      ctx.fillStyle=act?"#ffd45d":"#9fb0c0"; ctx.font="bold "+Math.round(b.h*0.34)+"px sans-serif"; ctx.fillText(am,b.x,b.y+b.h*0.22);
+    } else if(b.med){   // 메디킷 = 회복 UI 통합(개수)
+      const ok=player.medkits>0&&player.hp<100;
+      ctx.globalAlpha=0.34; ctx.fillStyle=player.healing?"#1d3a2a":"#0d1016"; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,7); ctx.fill();
+      ctx.globalAlpha=0.85; ctx.strokeStyle=ok?"#5dff9b":"#6a7686"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,7); ctx.stroke();
+      ctx.globalAlpha=1; ctx.fillStyle="#eef"; ctx.font=Math.round(b.r*0.8)+"px sans-serif"; ctx.fillText("💉",b.x,b.y-b.r*0.18);
+      ctx.fillStyle=player.medkits>0?"#5dff9b":"#888"; ctx.font="bold "+Math.round(b.r*0.55)+"px sans-serif"; ctx.fillText("×"+player.medkits,b.x,b.y+b.r*0.5);
+    } else {
+      const hot=b.hot;
+      ctx.globalAlpha=hot?0.6:0.34; ctx.fillStyle=hot?"#7a2a10":"#0d1016"; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,7); ctx.fill();
+      ctx.globalAlpha=hot?1:0.7; ctx.strokeStyle=hot?"#ffae3a":"#6a7686"; ctx.lineWidth=hot?3:2; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,7); ctx.stroke();
+      ctx.globalAlpha=1; ctx.fillStyle="#eef"; ctx.font=Math.round(b.r*0.9)+"px sans-serif"; ctx.fillText(b.ic,b.x,b.y+1);
+      if(hot){ ctx.fillStyle="#ffd45d"; ctx.font="bold 12px sans-serif"; ctx.fillText("탈출 E",b.x,b.y+b.r+12); }
+    }
   }
   ctx.globalAlpha=1;
   if(lj.active){ ctx.globalAlpha=0.25; ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(lj.ox,lj.oy,JR,0,7); ctx.fill();
@@ -1967,7 +1990,8 @@ function drawTouchHUD(){
     ctx.globalAlpha=0.7; ctx.fillStyle="#ff7a3a"; ctx.beginPath(); ctx.arc(kx,ky,30,0,7); ctx.fill(); }
   ctx.restore();
 }
-function drawMedkitHUD(){   // 좌하단 메디킷 보유 표시
+function drawMedkitHUD(){   // 좌하단 메디킷 보유 표시 (모바일은 슬롯 옆 💉 버튼에 통합)
+  if(isTouch) return;
   const x=18, y=H-26; ctx.save(); ctx.textAlign="left"; ctx.textBaseline="middle";
   ctx.font="20px sans-serif"; ctx.fillText("💉",x,y);
   for(let i=0;i<player.medMax;i++){ ctx.fillStyle=i<player.medkits?"#5dff9b":"#333"; ctx.fillRect(x+26+i*16,y-7,12,14); ctx.strokeStyle="#0a3"; ctx.lineWidth=1; ctx.strokeRect(x+26+i*16,y-7,12,14); }
