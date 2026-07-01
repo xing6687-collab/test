@@ -601,15 +601,19 @@ const BOMB_TYPES=[
   {name:"고폭탄 폭격", pen:2, color:"#ff9d3a", delay:3, dur:11, interval:0.13, area:380, blast:90, dmg:46},
   {name:"신의 지팡이", pen:3, color:"#bfe6ff", delay:3, search:220, dmg:2400, splash:130},
   {name:"네이팜 폭격", pen:1, color:"#ff5a2e", delay:3, dur:8,  interval:0.16, area:380, blast:78, dmg:32, fireR:100, fireLife:30},
+  {name:"EMP 폭격", kind:"emp", pen:3, color:"#72d7ff", delay:2.6, radius:300, dmg:35, empT:6.0},
 ];
-const BOMB_COST=[800,1500,1100];
+const BOMB_COST=[800,1500,1100,1200];
 // 전투기 폭격(공습) — 범위 좁지만 빠른 대처용
 const AIR_TYPES=[
-  {name:"기총소사", kind:"strafe", pen:3, color:"#ffd45d"},   // 3회 연속 패스 · 한 방 처치
+  {name:"기총소사", kind:"strafe", pen:2, color:"#ffd45d"},   // 중장갑 관통 · 3회 연속 패스
   {name:"융단폭격", kind:"carpet", pen:3, color:"#ff7a2e"},   // 대전차 관통 · 한 방 처치
   {name:"전술핵",   kind:"nuke",   pen:3, color:"#bfe6ff"},
+  {name:"원형 방탄 배리어", kind:"barrier", pen:0, color:"#5ad0ff"},
+  {name:"연막 살포", kind:"smoke", pen:0, color:"#cfd7df"},
+  {name:"게이볼그 펀치", kind:"gaebolg", pen:3, color:"#ff5d5d"},
 ];
-const AIR_COST=[700,1100,2500];
+const AIR_COST=[700,1100,2500,900,650,1600];
 // 드론(동반 유닛) — 전투 중에만 공격, 탄약 소진 시 복귀·재장전
 const DRONE_TYPES=[
   {name:"기관총 드론", kind:"mg",        ammoMax:60, pen:0, dmg:8,  fireCD:0.08, range:380, reload:3,   reloads:7, color:"#ffd05a"},
@@ -652,7 +656,7 @@ function applyDifficulty(L){
   DIFF.scoreMul = difficulty;         // 점수 배율(난이도 비례)
   DIFF.noRevive = (difficulty>=10);   // 최고 난이도 「종말」은 하드코어 — 부활 불가
 }
-function espeed(e){ return e.type.speed*DIFF.speedMul; }   // 난이도 반영 적 이동 속도
+function espeed(e){ return e.type.speed*DIFF.speedMul*(e.empT>0?0.32:1); }   // 난이도/EMP 반영 적 이동 속도
 applyDifficulty(difficulty);
 // 선택 난이도에 맞춰 적 조합 가중치를 '어려운 적' 쪽으로 보정한 복사본 생성(원본 BATTLE_THEMES는 보존)
 function biasedTheme(base){
@@ -778,14 +782,18 @@ function scoreRecommendationCandidates(){
     addRecCandidate(list,"air",0,94+mix.ranged*1.2,"사격선 형성 — 기총소사로 탄막 축을 끊기","firefight");
     addRecCandidate(list,"bomb",0,90+mix.ranged,"엄폐 뒤 사격선 — 중장갑 관통 고폭탄으로 진지 붕괴","firefight");
     addRecCandidate(list,"turret",3,82+mix.ranged,"처절한 사격전 — 박격포 포탑으로 후방 압박","firefight");
+    addRecCandidate(list,"air",3,92+mix.ranged*1.0,"사격전 대응 — 원형 방탄 배리어로 탄막 차단","firefight-def");
+    addRecCandidate(list,"air",4,88+mix.ranged*0.9,"사격선 차단 — 가로 연막 살포로 명중률 저하","firefight-smoke");
     addRecCandidate(list,"drone",4,78+mix.ranged,"탄막 완화 — 요격 드론으로 투사체 부담 감소","firefight");
   }
   if(mix.total>=12 || mix.close>=5){
+    addRecCandidate(list,"air",5,90+mix.close*1.2,"전선 붕괴 — 게이볼그 펀치로 적을 밀어내기","panic-punch");
     addRecCandidate(list,"air",0,88+mix.total,"포위 위험 — 기총소사로 즉시 돌파선 확보","panic");
     addRecCandidate(list,"bomb",0,80+mix.total,"넓은 밀집 무리 — 고폭탄 폭격으로 전황 정리","panic");
   }
   // 드랍쉽 자체는 추천 판단에서 제외한다. 추천은 지상 전황 기준으로만 제안한다.
   if(pressure && mix.total>=5){
+    addRecCandidate(list,"air",3,89+mix.ranged,"목표 방어 — 방탄 배리어로 사격선 차단","objective-barrier");
     addRecCandidate(list,"turret",0,76+mix.total,"목표 수행 중 — 기관총 포탑으로 임시 방어선 구축","objective");
     addRecCandidate(list,"turret",3,74+mix.total,"장거리 압박 — 박격포 포탑으로 후방 지원","objective");
   }
@@ -795,6 +803,8 @@ function scoreRecommendationCandidates(){
     addRecCandidate(list,"air",0,96,"처절한 사격전 — 기총소사로 넓은 사격선을 끊기","meta-firefight");
     addRecCandidate(list,"bomb",0,93,"탄막 진지 붕괴 — 중장갑 관통 고폭탄","meta-firefight");
     addRecCandidate(list,"turret",3,86,"후방 화력전 — 박격포 포탑으로 적 사격축 압박","meta-firefight");
+    addRecCandidate(list,"air",3,95,"사격전 방어 — 원형 방탄 배리어","meta-firefight-barrier");
+    addRecCandidate(list,"air",4,91,"가로 연막 살포로 적 명중률 저하","meta-firefight-smoke");
     addRecCandidate(list,"drone",4,83,"투사체 부담 완화 — 요격 드론","meta-firefight");
   } else if(meta.includes("돌격전")){
     addRecCandidate(list,"weapon","lmg",90,"돌격선 유지 — 경기관총 지속 화력","meta-rush");
@@ -802,12 +812,14 @@ function scoreRecommendationCandidates(){
     addRecCandidate(list,"turret",0,84,"기관총 포탑으로 전방 방어선 형성","meta-rush");
     addRecCandidate(list,"weapon","ksg",82,"근접 돌파 저지 — 충격 산탄총","meta-rush");
   } else if(meta.includes("폭발")){
+    addRecCandidate(list,"bomb",3,92,"폭발 압박 — EMP로 워커/중장갑/투사체 흐름 차단","meta-emp");
     addRecCandidate(list,"drone",4,90,"폭발 압박 — 요격 드론으로 투사체 부담 감소","meta-explosive");
     addRecCandidate(list,"air",0,88,"투척/미사일 라인 절단 — 기총소사","meta-explosive");
     addRecCandidate(list,"bomb",0,84,"고폭탄으로 밀집 화력 차단","meta-explosive");
   } else if(meta.includes("장갑")||meta.includes("워커")){
     addRecCandidate(list,"weapon","rg",96,"장갑 공세 — 레이저건으로 대형 표적 대응","meta-armor");
     addRecCandidate(list,"bomb",1,92,"대형 위협 — 신의 지팡이로 압박","meta-armor");
+    addRecCandidate(list,"air",5,91,"대형 전선 붕괴 — 게이볼그 펀치로 밀어내기","meta-gaebolg");
     addRecCandidate(list,"air",0,88,"중장갑까지 관통하는 기총소사","meta-armor");
     addRecCandidate(list,"bomb",0,86,"중장갑 관통 고폭탄으로 전선 복구","meta-armor");
   } else if(meta.includes("오염")){
@@ -1056,19 +1068,19 @@ const OPERATION_METAS=[
     rec:[{kind:"weapon",id:"ksg",why:"근접 돌파 저지"},{kind:"weapon",id:"lmg",why:"전방 돌격선 지속 제압"},{kind:"air",id:0,why:"기총소사로 돌격선 절단"},{kind:"turret",id:0,why:"기관총 포탑으로 전선 유지"}]},
   {name:"처절한 사격전", icon:"🔫", minLv:3, desc:"원거리 탄막과 수류탄이 엄폐를 압박 — 한 명을 골라 잡는 전투가 아니라 사격선 전체를 끊어야 한다", weight:4,
     threat:{inf:1,mech:5,heavy:1,anti:0}, w:{infected:12,assault:45,suppressor:34,armored:4,droneEnemy:5},
-    rec:[{kind:"air",id:0,why:"기총소사로 사격선을 한 번에 절단"},{kind:"bomb",id:0,why:"중장갑까지 관통하는 고폭탄으로 진지 붕괴"},{kind:"turret",id:3,why:"박격포 포탑으로 원거리 사격선 압박"},{kind:"drone",id:4,why:"요격 드론으로 탄막 부담 감소"}]},
+    rec:[{kind:"air",id:3,why:"원형 방탄 배리어로 탄막 차단"},{kind:"air",id:4,why:"가로 연막으로 사격선 차단"},{kind:"air",id:0,why:"기총소사로 사격선을 한 번에 절단"},{kind:"bomb",id:0,why:"중장갑까지 관통하는 고폭탄으로 진지 붕괴"}]},
   {name:"폭발 압박", icon:"💣", minLv:4, desc:"수류탄·미사일·드론이 위치를 계속 바꾸게 만든다 — 정지하면 죽는 메타", weight:3,
     threat:{inf:2,mech:4,heavy:2,anti:1}, w:{infected:20,assault:25,suppressor:32,armored:12,droneEnemy:9,special:2},
-    rec:[{kind:"air",id:0,why:"기총소사로 투척/사격선을 끊기"},{kind:"weapon",id:"mg",why:"일반장갑 화력전 유지"},{kind:"drone",id:4,why:"요격 드론으로 투사체 부담 감소"},{kind:"bomb",id:0,why:"고폭탄으로 밀집 화력 차단"}]},
+    rec:[{kind:"bomb",id:3,why:"EMP로 미사일·워커 압박 차단"},{kind:"air",id:3,why:"원형 배리어로 탄막 생존성 확보"},{kind:"air",id:0,why:"기총소사로 투척/사격선을 끊기"},{kind:"drone",id:4,why:"요격 드론으로 투사체 부담 감소"}]},
   {name:"장갑 호송", icon:"🚚", minLv:5, desc:"중장갑이 전선 중앙을 밀고 들어옴 — 대전차 화력을 준비하라", weight:3,
     threat:{inf:2,mech:3,heavy:4,anti:1}, w:{infected:22,assault:24,suppressor:10,armored:32,droneEnemy:4,special:6,walker:2},
-    rec:[{kind:"weapon",id:"rg",why:"중장갑 핵심 대응"},{kind:"bomb",id:1,why:"대형 표적 즉시 제거"},{kind:"air",id:0,why:"중장갑 관통 기총소사"},{kind:"weapon",id:"gl",why:"중장갑 보조+광역"}]},
+    rec:[{kind:"weapon",id:"rg",why:"중장갑 핵심 대응"},{kind:"bomb",id:1,why:"대전차 장갑 신의 지팡이"},{kind:"air",id:5,why:"게이볼그 펀치로 전선 밀어내기"},{kind:"air",id:0,why:"중장갑 관통 기총소사"}]},
   {name:"전장 오염", icon:"☣️", minLv:6, desc:"화염차·독가스차가 좋은 엄폐와 길목을 망가뜨림 — 이동 동선을 계속 재선택해야 한다", weight:2,
     threat:{inf:3,mech:2,heavy:2,anti:1}, w:{infected:32,assault:24,suppressor:8,armored:10,droneEnemy:4,special:22},
     rec:[{kind:"drone",id:0,why:"이동 중 자동 화력 보조"},{kind:"air",id:0,why:"오염 차량 진입선 절단"},{kind:"bomb",id:2,why:"네이팜으로 역으로 구역 봉쇄"},{kind:"turret",id:1,why:"로켓 포탑으로 차량 압박"}]},
   {name:"강습 워커", icon:"🤖", minLv:8, desc:"워커와 중장갑이 느리지만 확실하게 전선을 밀어버림 — 최고 화력을 아끼지 마라", weight:1,
     threat:{inf:1,mech:3,heavy:5,anti:4}, w:{infected:14,assault:18,suppressor:16,armored:28,droneEnemy:6,special:8,walker:10},
-    rec:[{kind:"weapon",id:"rg",why:"대전차 장갑 대응"},{kind:"bomb",id:1,why:"신의 지팡이로 대형 표적 제압"},{kind:"air",id:2,why:"전술핵으로 전황 복구"},{kind:"weapon",id:"nuke",why:"최대 화력 판타지"}]},
+    rec:[{kind:"weapon",id:"rg",why:"대전차 장갑 대응"},{kind:"bomb",id:1,why:"신의 지팡이로 대형 표적 제압"},{kind:"air",id:5,why:"게이볼그 펀치로 워커 경직"},{kind:"air",id:2,why:"전술핵으로 전황 복구"}]},
   {name:"혼합 공세", icon:"⚔️", minLv:7, desc:"물량·탄막·장갑이 섞이는 상위 전장 — 보유 장비에 따라 전선을 유연하게 바꿔야 한다", weight:2,
     threat:{inf:3,mech:4,heavy:4,anti:2}, w:{infected:24,assault:28,suppressor:20,armored:18,droneEnemy:5,special:4,walker:1},
     rec:[{kind:"weapon",id:"mg",why:"일반장갑 전선 유지"},{kind:"air",id:0,why:"돌파/사격선 모두 대응"},{kind:"bomb",id:0,why:"중장갑 관통 광역"},{kind:"drone",id:4,why:"투사체 부담 완화"}]},
@@ -1147,6 +1159,7 @@ function swapSlot(){ for(let i=1;i<=3;i++){ const s=(activeSlot+i)%3; if(slotUsa
 function activeGun(){ const sl=slots[activeSlot]; return (sl.type==="gun"&&sl.wi!=null)?WEAPONS[sl.wi]:null; }
 
 let enemies=[], bullets=[], pods=[], craters=[], grenades=[], turrets=[], missiles=[], dropships=[];
+let barriers=[], smokeFields=[], empBursts=[], gaebolgFx=[];
 let beacons=[], beaconThrows=[], bombardments=[], firePatches=[], beams=[], fallingBombs=[];  // 스트라타젬 신호기
 let scorches=[], debris=[], flameGroundCD=0;   // 그을린 자국 / 바닥에 버려진 장비 / 화염 잔불 생성 타이머
 let heldBeacon=-1;            // 현재 손에 든 신호기 인덱스(-1=없음)
@@ -1320,6 +1333,7 @@ function resetGame(){
   spreadCur=0; recoilV=0; recoilH=0;
   turretVariant=0; TACTICALS.forEach(t=>{ t.charges=t.max; t.rt=0; });
   enemies=[]; bullets=[]; pods=[]; craters=[]; grenades=[]; turrets=[]; missiles=[]; dropships=[];
+  barriers=[]; smokeFields=[]; empBursts=[]; gaebolgFx=[];
   beacons=[]; beaconThrows=[]; bombardments=[]; firePatches=[]; beams=[]; fallingBombs=[]; heldBeacon=-1;
   scorches=[]; debris=[]; flameGroundCD=0; pops=[]; rods=[]; graves=[]; bouncers=[]; lastDelivery=null;
   particles=[]; flare=null; flareTimer=-1; reinforceActive=false; reinforceCD=0; kills=0;
@@ -1997,6 +2011,9 @@ function enemyVariant(kind,t){
   if(kind==="mech") return {kind:"ar", label:"AR"};
   return {kind:"melee", label:"근접"};
 }
+
+function pointInSmoke(x,y){ for(const sm of smokeFields){ if(sm.life>0 && Math.hypot(x-sm.x,y-sm.y)<=sm.r) return true; } return false; }
+function pointInBarrier(x,y){ for(const ba of barriers){ if(ba.life>0 && Math.hypot(x-ba.x,y-ba.y)<=ba.r) return ba; } return null; }
 function movingAccuracyPenalty(){
   const v=player.vel||0;
   let p=Math.min(0.95,v/360);
@@ -2005,7 +2022,9 @@ function movingAccuracyPenalty(){
 }
 function enemyAimAngle(e,dx,dy,baseSpread=0.14){
   const move= movingAccuracyPenalty();
-  const spread=(baseSpread + move*0.42)*DIFF.acc;
+  const smoke = pointInSmoke(player.x,player.y) ? 0.75 : 0;
+  const emp = e.empT>0 ? 0.6 : 0;
+  const spread=(baseSpread + move*0.42 + smoke + emp)*DIFF.acc;
   return Math.atan2(dy,dx)+spread*(Math.random()-0.5)*2;
 }
 function enemyBullet(e,ang,dmg=9,spd=500,color="#ff7a2e",life=2,pen=0){
@@ -2240,7 +2259,7 @@ function updateEnemies(dt){
   enemyGrid={}; for(const e of alive){ const k=Math.floor(e.x/EGRID)+"_"+Math.floor(e.y/EGRID); (enemyGrid[k]||(enemyGrid[k]=[])).push(e); }
   // 순찰 그룹 중심
   const gc={};
-  for(const e of alive){ if(e.tagT>0) e.tagT-=dt; }   // 신호기 부착 마커 수명
+  for(const e of alive){ if(e.tagT>0) e.tagT-=dt; if(e.empT>0) e.empT-=dt; }   // 신호기 부착 마커 수명
   for(const e of alive){ if(e.role==="patrol" && e.pg!=null){ const c=gc[e.pg]||(gc[e.pg]={x:0,y:0,n:0}); c.x+=e.x;c.y+=e.y;c.n++; } }
   for(const k in gc){ gc[k].x/=gc[k].n; gc[k].y/=gc[k].n; }
   for(const e of alive){
@@ -2319,7 +2338,8 @@ function updateEnemies(dt){
           else if(d<preferred-90){ e.x-=vx/vl*espeed(e)*0.45*speedMul*dt; e.y-=vy/vl*espeed(e)*0.45*speedMul*dt; }
           e.fire-=dt;
           let maxRange= ev.kind==="grenade"?760:ev.kind==="missile"?920:ev.kind==="walker"?1050:ev.kind==="shotgun"?280:620;
-          if(e.fire<=0 && d<maxRange && !coverBetween(e.x,e.y,player.x,player.y)){
+          if(e.empT>0) e.fire=Math.max(e.fire,0.25);
+          if(e.empT<=0 && e.fire<=0 && d<maxRange && !coverBetween(e.x,e.y,player.x,player.y)){
             fireEnemyShot(e,dx,dy);
             const k=ev.kind;
             // 사격 빈도 대폭 하향: 많이 맞아서 죽는 느낌보다, 전선 압박/위치 이동 압박을 우선한다.
@@ -2552,17 +2572,17 @@ function rodImpact(tx,ty,T,target){
 // 통통 튀는 신의 지팡이
 let rods=[];
 function nearestEnemy(x,y,range){ let best=null,bd=range; for(const e of enemies){ if(!e.alive) continue; const d=Math.hypot(e.x-x,e.y-y); if(d<bd){ bd=d; best=e; } } return best; }
-function spawnRodStaff(x,y,T){ rods.push({x,y,z:640,vz:0,vx:(Math.random()-0.5)*40,vy:(Math.random()-0.5)*40,spin:Math.random()*7,vspin:9+Math.random()*7,bounces:0,max:5,T}); }
+function spawnRodStaff(x,y,T){ rods.push({x,y,z:1500,vz:0,vx:(Math.random()-0.5)*40,vy:(Math.random()-0.5)*40,spin:Math.random()*7,vspin:14+Math.random()*10,bounces:0,max:5,T}); }
 function updateRods(dt){
   for(const r of rods){
-    r.vz-=2600*dt; r.z+=r.vz*dt; r.x+=r.vx*dt; r.y+=r.vy*dt; r.spin+=r.vspin*dt;
+    r.vz-=3600*dt; r.z+=r.vz*dt; r.x+=r.vx*dt; r.y+=r.vy*dt; r.spin+=r.vspin*dt;
     r.x=Math.max(WALL,Math.min(WORLD.w-WALL,r.x)); r.y=Math.max(WALL,Math.min(WORLD.h-WALL,r.y));
     if(r.z<=0 && r.vz<0){   // 착지 = 한 번 공격(통!)
       r.z=0; r.bounces++; const last=r.bounces>=r.max;
       rodImpact(r.x,r.y,r.T,nearestEnemy(r.x,r.y,r.T.splash*1.3)); sfx("boom"); shake=Math.max(shake,last?16:11);
       popText(r.x,r.y-14, last?"쾅!":["통!","퉁!","통!"][r.bounces%3], "#bfe6ff");
       if(last){ r.dead=true; continue; }
-      r.vz=440-r.bounces*60; r.vspin=9+Math.random()*8;   // 점점 약하게
+      r.vz=1550; r.vspin=12+Math.random()*10;   // 스카이 콩콩처럼 매번 같은 높이로 크게 튀어오름
       const tgt=nearestEnemy(r.x,r.y,520);   // 다음엔 근처 적 쪽으로 통통(코믹 추적)
       if(tgt){ const a=Math.atan2(tgt.y-r.y,tgt.x-r.x); r.vx=Math.cos(a)*(130+Math.random()*60); r.vy=Math.sin(a)*(130+Math.random()*60); }
       else { r.vx=(Math.random()-0.5)*180; r.vy=(Math.random()-0.5)*180; }
@@ -2663,6 +2683,7 @@ function updateBombs(dt){
       if(b.aimX==null){ b.aimX=ax; b.aimY=ay; } else { b.aimX+=(ax-b.aimX)*Math.min(1,7*dt); b.aimY+=(ay-b.aimY)*Math.min(1,7*dt); }
     }
     if(b.delay>0){ b.delay-=dt; continue; }
+    if(T.kind==="emp"){ empBlast(b.x,b.y,T); pushLog("⚡ EMP 폭격 — 전자장비 마비!",T.color); toast("⚡ EMP 폭격!"); b.done=true; continue; }
     if(b.type===1){   // 신의 지팡이: 진짜 지팡이가 하늘에서 떨어져 통통 5번 튀며 공격
       spawnRodStaff(b.aimX||b.x, b.aimY||b.y, T); pushLog("🦯 신의 지팡이 강하 — 통통!","#bfe6ff"); toast("🦯 신의 지팡이!"); b.done=true;
     }
@@ -2685,6 +2706,7 @@ function updateBullets(dt){
   let bulletProcessed=0;
   for(const b of bullets){ if(++bulletProcessed>900){ dbgCounter("bulletCap"); break; } if(b.life<=0) continue; b.age=(b.age||0)+dt; b.life-=dt; const bpx=b.x,bpy=b.y; b.x+=b.vx*dt; b.y+=b.vy*dt;   // bpx/bpy=이동 전 위치(선분 판정용)
     if(b.x<WALL||b.x>WORLD.w-WALL||b.y<WALL||b.y>WORLD.h-WALL){ if(b.splash>0) explode(b); b.life=0; continue; }
+    if(!b.fromPlayer){ const ba=pointInBarrier(b.x,b.y); if(ba){ b.life=0; particles.push({x:b.x,y:b.y,vx:(Math.random()-0.5)*90,vy:(Math.random()-0.5)*90,life:0.18,max:0.18,r:3,color:ba.color,kind:"spark"}); continue; } }
     const cc=coverAt(b.x,b.y);
     if(cc){ if(b.splash>0) explode(b); else if(b.fromPlayer && cc.type==="weak") damageCover(cc,b.dmg);  // 폭발물=광역파괴 / 일반탄=약한엄폐물만
       b.life=0; continue; }
@@ -2897,8 +2919,38 @@ function updateTacticals(dt){
 }
 
 //---------------- 전투기 폭격(공습) ----------------
+
+function empBlast(x,y,T){
+  const R=T.radius||300; empBursts.push({x,y,r:R,t:0,life:0.75,color:T.color}); boomFx(x,y,R*0.65); sfx("boom"); shake=Math.max(shake,10);
+  for(const e of enemies){ if(!e.alive) continue; const d=Math.hypot(e.x-x,e.y-y); if(d<=R+e.r){ e.empT=Math.max(e.empT||0,T.empT||5); damageEnemy(e,T.dmg||30,T.pen||3,true,false,false,null,true); } }
+  for(const m of missiles){ if(Math.hypot(m.x-x,m.y-y)<=R){ m.dead=true; } }
+  if(drone && Math.hypot(drone.x-x,drone.y-y)<=R) hurtDrone(18);
+  popText(x,y-44,"EMP!",T.color||"#72d7ff",22);
+}
+function updateSupportFields(dt){
+  for(const b of barriers){ b.life-=dt; b.pulse=(b.pulse||0)+dt; } barriers=barriers.filter(b=>b.life>0);
+  for(const sm of smokeFields){ sm.life-=dt; sm.pulse=(sm.pulse||0)+dt; } smokeFields=smokeFields.filter(sm=>sm.life>0);
+  for(const e of empBursts){ e.t+=dt; e.life-=dt; } empBursts=empBursts.filter(e=>e.life>0);
+  for(const g of gaebolgFx){ g.life-=dt; } gaebolgFx=gaebolgFx.filter(g=>g.life>0);
+}
+function drawSupportFields(){
+  for(const sm of smokeFields){ ctx.save(); const a=Math.max(0,Math.min(0.42,sm.life/12*0.42)); ctx.globalAlpha=a; ctx.fillStyle="#cfd7df"; ctx.beginPath(); ctx.arc(sm.x,sm.y,sm.r*(0.9+0.08*Math.sin((sm.pulse||0)*4)),0,7); ctx.fill(); ctx.globalAlpha=a*0.55; ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.setLineDash([10,8]); ctx.stroke(); ctx.restore(); }
+  for(const b of barriers){ ctx.save(); const pul=1+0.04*Math.sin((b.pulse||0)*7); ctx.globalAlpha=0.18; ctx.fillStyle=b.color; ctx.beginPath(); ctx.arc(b.x,b.y,b.r*pul,0,7); ctx.fill(); ctx.globalAlpha=0.85; ctx.strokeStyle=b.color; ctx.lineWidth=4; ctx.setLineDash([18,10]); ctx.beginPath(); ctx.arc(b.x,b.y,b.r*pul,0,7); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=0.35; ctx.lineWidth=1.5; for(let i=0;i<5;i++){ ctx.beginPath(); ctx.arc(b.x,b.y,b.r*(0.25+i*0.15),0,7); ctx.stroke(); } ctx.restore(); }
+  for(const e of empBursts){ ctx.save(); ctx.globalAlpha=Math.max(0,e.life/0.75); ctx.strokeStyle=e.color; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(e.x,e.y,e.r*(1-e.life/0.75),0,7); ctx.stroke(); ctx.restore(); }
+  for(const g of gaebolgFx){ ctx.save(); ctx.translate(g.x,g.y); ctx.rotate(g.dir); ctx.globalAlpha=Math.max(0,Math.min(1,g.life/0.7));
+    if(g.portal){ const t=1-g.life/1.45; const reach=Math.min(780,Math.max(0,t*920)); ctx.strokeStyle="#9b6cff"; ctx.lineWidth=6; ctx.setLineDash([12,8]); ctx.beginPath(); ctx.ellipse(0,0,36,72,0,0,7); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha*=0.75; ctx.fillStyle="rgba(155,108,255,.28)"; ctx.beginPath(); ctx.ellipse(0,0,32,66,0,0,7); ctx.fill(); ctx.globalAlpha=Math.max(0,Math.min(1,g.life/0.7)); ctx.fillStyle="#333"; ctx.fillRect(22,-16,Math.max(20,reach-90),32); ctx.fillStyle="#ff5d5d"; ctx.strokeStyle="#ffe0e0"; ctx.lineWidth=5; ctx.fillRect(reach-70,-34,82,68); ctx.strokeRect(reach-70,-34,82,68); }
+    else { ctx.fillStyle="#ff5d5d"; ctx.strokeStyle="#ffe0e0"; ctx.lineWidth=5; ctx.fillRect(-40,-34,80,68); ctx.strokeRect(-40,-34,80,68); ctx.fillStyle="#333"; ctx.fillRect(-110,-18,70,36); }
+    ctx.restore(); }
+}
+function gaebolgImpact(cx,cy,dir,pen){
+  const dx=Math.cos(dir),dy=Math.sin(dir), px=-dy,py=dx;
+  gaebolgFx.push({x:cx,y:cy,dir,life:0.7}); sfx("crash"); shake=Math.max(shake,14); boomFx(cx,cy,90);
+  for(const e of enemies){ if(!e.alive) continue; const rx=e.x-cx, ry=e.y-cy; const along=rx*dx+ry*dy, side=Math.abs(rx*px+ry*py); if(along>-90 && along<180 && side<95+e.r){ damageEnemy(e,260,pen,true,false,false,dir,true); const km=(e.kind==="walker"||e.ev?.kind==="walker")?0.25:(e.kind==="heavy"?0.55:1); e.x+=dx*260*km; e.y+=dy*260*km; e.hit=Math.max(e.hit||0,0.55); } }
+  aoeFriendlyFire(cx,cy,110,60); damageCoversAt(cx,cy,125,180);
+}
+
 const AIR_ACT=1.0, AIR_DUR=1.5, AIR_OFF=1150;
-function airAxis(a){ return a.type==="strafe" ? a.dir+Math.PI/2 : a.dir; }   // 기총:정면기준 좌→우 / 융단:전방
+function airAxis(a){ return (a.type==="strafe"||a.type==="smoke"||a.type==="barrier") ? a.dir+Math.PI/2 : a.dir; }   // 기총/연막/배리어: 신호기 중심 가로축 / 융단·게이볼그: 전방축
 function updateAirstrikes(dt){
   for(const a of airstrikes){ a.t+=dt;
     if(a.host){ if(a.host.alive){ const lock=(a.type==="nuke")?(a.t<2.4):(a.t<AIR_ACT); if(lock){ a.x=a.host.x; a.y=a.host.y; a.host.tagT=0.4; } } else a.host=null; }   // 진입(발동) 전까지 표적 추종
@@ -2906,18 +2958,53 @@ function updateAirstrikes(dt){
     if(a.t<AIR_ACT) continue;                          // 경고 단계(범위 표시)
     if(!a.flew){ a.flew=true; sfx("plane"); }          // 전투기 진입 굉음
     const p=(a.t-AIR_ACT)/AIR_DUR;
-    if(p>1){ if(a.type==="strafe" && (a.pass||1)<3){ a.pass=(a.pass||1)+1; a.t=AIR_ACT; a.hits=[]; a.flew=false; pushLog(`✈️ 기총소사 ${a.pass}차 패스!`,a.color); } else { a.done=true; } continue; }   // 기총소사 3회 연속
+    if(p>1){
+      if(a.type==="strafe" && (a.pass||1)<3){ a.pass=(a.pass||1)+1; a.t=AIR_ACT; a.hits=[]; a.flew=false; pushLog(`✈️ 기총소사 ${a.pass}차 패스!`,a.color); }
+      else { a.done=true; }
+      continue;
+    }
     const ax=airAxis(a), dx=Math.cos(ax), dy=Math.sin(ax), s=-AIR_OFF + p*2*AIR_OFF;   // 화면 밖 → 밖
     const px=a.x+dx*s, py=a.y+dy*s; a.px=px; a.py=py;
     // 콘트레일(연기 자취)
     if(Math.random()<0.7) particles.push({x:px-dx*36,y:py-dy*36,vx:0,vy:0,life:0.55,max:0.55,r:4+Math.random()*3,color:"#9aa6b0",kind:"blood"});
-    if(a.type==="strafe"){       // 신호기 중심 좌우 띠 — 지나가며 강타(한 방 처치)
-      if(Math.abs(s)<=360){ for(const e of enemies){ if(!e.alive||a.hits.includes(e)) continue; if(Math.hypot(e.x-px,e.y-py)<125){ damageEnemy(e,9999,a.pen,true,false,false,null,true); a.hits.push(e); boomFx(e.x,e.y,48); } }
+
+    if(a.type==="barrier"){
+      // 전투기가 신호기 중심을 지나갈 때 보호막 생성 캡슐을 투하한다.
+      if(!a.spawned && Math.abs(s)<=70){
+        a.spawned=true;
+        deliveryFx(a.x,a.y);
+        barriers.push({x:a.x,y:a.y,r:240,life:15,color:a.color,pulse:0});
+        pushLog("🛡️ 전투기 배리어 캡슐 투하 — 원형 방탄막 전개!",a.color); toast("🛡️ 배리어 투하"); sfx("shield");
+        for(let k=0;k<16;k++) particles.push({x:a.x+(Math.random()-0.5)*80,y:a.y+(Math.random()-0.5)*80,vx:(Math.random()-0.5)*160,vy:(Math.random()-0.5)*160,life:0.55,max:0.55,r:3+Math.random()*4,color:a.color,kind:"spark"});
+      }
+    } else if(a.type==="strafe"){       // 신호기 중심 좌우 띠 — 지나가며 강타(중장갑 관통)
+      if(Math.abs(s)<=360){ for(const e of enemies){ if(!e.alive||a.hits.includes(e)) continue; if(Math.hypot(e.x-px,e.y-py)<125){ damageEnemy(e,420,a.pen,true,false,false,null,true); a.hits.push(e); boomFx(e.x,e.y,48); } }
         aoeFriendlyFire(px,py,90,120);
         damageCoversAt(px,py,105,40);
         a.mg=(a.mg||0)-dt; if(a.mg<=0){ a.mg=0.04; sfx("strafemg"); }
         a.fx=(a.fx||0)-dt; if(a.fx<=0){ a.fx=0.05; boomFx(px,py,80); }   // 경로에 큰 폭발 연속(뚜렷한 파괴선)
         for(let k=0;k<10;k++) particles.push({x:px+(Math.random()-0.5)*200,y:py+(Math.random()-0.5)*200,vx:(Math.random()-0.5)*200,vy:(Math.random()-0.5)*200,life:0.3,max:0.3,r:3+Math.random()*3,color:Math.random()<0.5?"#ffd45d":"#fff",kind:"spark"}); }
+    } else if(a.type==="smoke"){
+      // 기총소사처럼 신호기 위치를 중심으로 가로로 연막탄을 주르륵 살포한다.
+      if(Math.abs(s)<=390){ a.scd=(a.scd||0)-dt; if(a.scd<=0){ a.scd=0.105; smokeFields.push({x:px+(Math.random()-0.5)*30,y:py+(Math.random()-0.5)*30,r:125,life:13,pulse:0}); sfx("puff"); } }
+    } else if(a.type==="gaebolg"){
+      // 전투기가 차원의 문을 투하 → 문에서 거대 로봇팔이 전방으로 뻗어나오며 펀칭한다.
+      if(!a.portal && Math.abs(s)<=80){ a.portal=true; a.portalT=0; gaebolgFx.push({x:a.x,y:a.y,dir:a.dir,life:1.45,portal:true,reach:0}); sfx("warp"); pushLog("🌀 차원의 문 전개 — 게이볼그 펀치 준비!",a.color); }
+      if(a.portal){
+        a.portalT=(a.portalT||0)+dt;
+        const reach=Math.min(780, a.portalT*720);
+        a.pcd=(a.pcd||0)-dt;
+        if(a.pcd<=0 && reach>80){
+          a.pcd=0.115;
+          const steps=1+Math.floor(reach/180);
+          for(let i=0;i<steps;i++){
+            const d=80+i*170+Math.random()*45;
+            if(d>reach) continue;
+            const px2=a.x+Math.cos(a.dir)*d, py2=a.y+Math.sin(a.dir)*d;
+            gaebolgImpact(px2,py2,a.dir,a.pen);
+          }
+        }
+      }
     } else {                     // 융단: 신호기에서 전방 0~560
       if(s>=0 && s<=680){ a.bcd=(a.bcd||0)-dt; if(a.bcd<=0){ a.bcd=0.03; fallingBombs.push({x:px+(Math.random()-0.5)*200,y:py+(Math.random()-0.5)*200,z:380+Math.random()*150,vz:1000,blast:120,dmg:9999,pen:a.pen,fireR:0,fireLife:0}); } }
     }
@@ -2948,11 +3035,11 @@ function drawAirstrikes(){
         if(a.t>=1){ const z=Math.max(0,(2.0-a.t)/1.0)*640; ctx.fillStyle="#999"; ctx.fillRect(a.x-7,a.y-z-34,14,34); ctx.fillStyle="#e23b3b"; ctx.beginPath(); ctx.moveTo(a.x-7,a.y-z-34); ctx.lineTo(a.x,a.y-z-52); ctx.lineTo(a.x+7,a.y-z-34); ctx.closePath(); ctx.fill(); } ctx.restore(); }
       continue; }
     const ax=airAxis(a), warn=a.t<AIR_ACT;
-    let lx,ly,lw,lh; if(a.type==="strafe"){ lx=-360; ly=-128; lw=720; lh=256; } else { lx=0; ly=-150; lw=680; lh=300; }   // 신호기 기준 범위
     ctx.save(); ctx.translate(a.x,a.y); ctx.rotate(ax);
-    ctx.globalAlpha=warn?(0.55+0.4*Math.sin(performance.now()/110)):0.16; ctx.strokeStyle=a.color; ctx.lineWidth=3; ctx.setLineDash([16,11]); ctx.strokeRect(lx,ly,lw,lh); ctx.setLineDash([]);
-    if(warn){ ctx.globalAlpha=0.12; ctx.fillStyle=a.color; ctx.fillRect(lx,ly,lw,lh); }
-    ctx.restore();
+    ctx.globalAlpha=warn?(0.55+0.4*Math.sin(performance.now()/110)):0.16; ctx.strokeStyle=a.color; ctx.lineWidth=3; ctx.setLineDash([16,11]);
+    if(a.type==="barrier"){ ctx.beginPath(); ctx.arc(0,0,240,0,7); ctx.stroke(); if(warn){ ctx.globalAlpha=0.12; ctx.fillStyle=a.color; ctx.beginPath(); ctx.arc(0,0,240,0,7); ctx.fill(); } }
+    else { let lx,ly,lw,lh; if(a.type==="strafe"||a.type==="smoke"){ lx=-360; ly=-128; lw=720; lh=256; } else if(a.type==="gaebolg"){ lx=-360; ly=-125; lw=820; lh=250; } else { lx=0; ly=-150; lw=680; lh=300; } ctx.strokeRect(lx,ly,lw,lh); if(warn){ ctx.globalAlpha=0.12; ctx.fillStyle=a.color; ctx.fillRect(lx,ly,lw,lh); } }
+    ctx.setLineDash([]); ctx.restore();
     if(warn){ ctx.save(); ctx.fillStyle=a.color; ctx.font="bold 26px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("⚠ "+Math.max(1,Math.ceil(AIR_ACT-a.t+0.001)),a.x,a.y); ctx.restore(); }
     if(!warn && a.px!=null) drawPlane(a.px,a.py,ax,a.color);
   }
@@ -3213,6 +3300,7 @@ function render(){
     if(c.maxhp>0 && c.hp<c.maxhp){ ctx.fillStyle="#200"; ctx.fillRect(c.x,c.y-5,c.w,3); ctx.fillStyle=c.type==="strong"?"#ffae42":"#9be39b"; ctx.fillRect(c.x,c.y-5,c.w*Math.max(0,c.hp/c.maxhp),3); } }
 
   for(const f of firePatches) drawFirePatch(f);
+  drawSupportFields();
   for(const b of bullets){   // 트레이서(잔광 선) + 빛나는 탄두
     ctx.save(); ctx.strokeStyle=b.color; ctx.globalAlpha=0.5; ctx.lineWidth=b.fromPlayer?3:4; ctx.lineCap="round";
     ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.x-b.vx*0.022,b.y-b.vy*0.022); ctx.stroke();
@@ -3262,7 +3350,7 @@ function beaconPreviewInfo(item){
   if(!item) return {radius:34,label:"착탄"};
   if(item.cat==="turret"){ const t=TURRET_VARIANTS[item.variant]; return {radius:t.range||t.radius||160,label:t.name+" 범위"}; }
   if(item.cat==="bomb"){ const b=BOMB_TYPES[item.variant]; return {radius:b.area||b.splash||b.blast||120,label:b.name+" 범위"}; }
-  if(item.cat==="air"){ const a=AIR_TYPES[item.variant]; return {radius:a.kind==="nuke"?300:(a.kind==="carpet"?240:190),label:a.name+" 예상 경로"}; }
+  if(item.cat==="air"){ const a=AIR_TYPES[item.variant]; return {radius:a.kind==="barrier"?240:(a.kind==="nuke"?300:(a.kind==="carpet"?240:(a.kind==="smoke"?190:(a.kind==="gaebolg"?220:190)))),label:a.name+" 예상 범위"}; }
   return {radius:34,label:"착탄"};
 }
 function drawThrowGhost(){ if(!(throwAim&&rj.active) && heldBeacon<0) return;
@@ -3839,7 +3927,7 @@ function loop(now){
     dbgSec('bullets'); updateBullets(dt);
     dbgSec('tacticals/reload'); updateTacticals(dt); updateReload(dt);
     dbgSec('pods/objectives'); updatePods(dt); updateObjectives(dt); updateExtraction(dt);
-    dbgSec('reinforce/bombs'); updateReinforcements(dt); updateBombs(dt); updateAirstrikes(dt);
+    dbgSec('reinforce/bombs'); updateReinforcements(dt); updateBombs(dt); updateAirstrikes(dt); updateSupportFields(dt);
     dbgSec('lasers/drone'); updateLasers(dt); updateDrone(dt); updateDbeams(dt); updateShuttles(dt);
     dbgSec('world'); updateDepots(dt); updateCrates(dt); updateMines(dt); updateScatters(dt); updateRods(dt); updateBouncers(dt); updateParticles(dt); updatePops(dt); updateGraves(dt); updateRings(dt); updateMusic(dt);
     dbgSec('ui/render'); updateBooms(dt); tacticalAdvice(dt); updateRecommendationUI(dt);
