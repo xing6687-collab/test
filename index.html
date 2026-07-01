@@ -166,7 +166,7 @@
       <div style="margin-top:8px"><b>부활:</b> 쓰러져도 자금이 충분하면 <b>비용을 내고 부활</b>(근처 안전지대 재투입). 부활할수록 비용이 오른다.</div>
     </div>
     <div id="diffSel">
-      <div class="dtitle">난이도 선택 — <b id="diffName">교전</b> <span id="diffNum">Lv.3</span></div>
+      <div class="dtitle">난이도 선택 — <b id="diffName">순찰</b> <span id="diffNum">Lv.2</span></div>
       <div id="diffBtns"></div>
       <div class="ddesc" id="diffDesc">표준 전장 (권장)</div>
     </div>
@@ -449,7 +449,7 @@ const DIFF_DESC=[
   "여유로운 첫 출격 — 적이 적고 약하다","가벼운 저항선","표준 전장 (권장)","적이 거세지고 수가 는다",
   "사방에서 압박해 온다","증원이 잦아진다","정예·중장갑이 몰려온다","쉴 틈을 주지 않는다",
   "한 번의 실수가 죽음","⚠️ 하드코어 — 부활 불가, 오직 전설만 생환한다"];
-let difficulty=3;          // 1~10
+let difficulty=2;          // 1~10
 const DIFF={};             // applyDifficulty()가 채우는 파생 파라미터
 function applyDifficulty(L){
   difficulty=Math.max(1,Math.min(10,Math.round(L)));
@@ -640,11 +640,8 @@ addEventListener("keydown",e=>{
 addEventListener("keyup",e=>{keys[e.code]=false;});
 function primaryDown(){ if(!running||buyOpen) return;   // 사격/투척 시작(마우스·터치 공용)
   if(heldBeacon>=0){ throwHeldBeacon(); return; }
-  if(slots[activeSlot].type==="gun"){ firing=true; if(isTouch){ mobileAimHoldT=0; mobileAimHoldTarget=null; } shoot(); } else useTactical(); }
-function primaryUp(){ const w=activeGun(); if(w&&w.charge&&chargeT>0) releaseRailgun();
-  if(isTouch && firing && validMobileAimTarget(lockTarget)){ mobileAimHoldTarget=lockTarget; mobileAimHoldT=3.0; }   // 사격 후 3초간 타겟 조준 유지
-  firing=false;
-}
+  if(slots[activeSlot].type==="gun"){ firing=true; shoot(); } else useTactical(); }
+function primaryUp(){ const w=activeGun(); if(w&&w.charge&&chargeT>0) releaseRailgun(); firing=false; }
 canvas.addEventListener("mousemove",e=>{ if(isTouch) return; const r=canvas.getBoundingClientRect(); mouse.x=e.clientX-r.left; mouse.y=e.clientY-r.top; });
 canvas.addEventListener("mousedown",e=>{ if(isTouch||e.button!==0) return; primaryDown(); });
 addEventListener("mouseup",e=>{ if(isTouch||e.button!==0) return; primaryUp(); });
@@ -665,7 +662,6 @@ function renderDiffSel(){
 renderDiffSel();
 // ===== 모바일 터치 (트윈스틱: 좌=이동, 우=조준+자동사격) =====
 let isTouch=false, touchMove={active:false,x:0,y:0,mag:0}, mapHold=false, mapHoldId=-1, throwAim=false;
-let mobileAimHoldT=0, mobileAimHoldTarget=null;   // 모바일: 사격 종료 후 잠시 타겟 조준 유지
 let lj={active:false,id:-1,ox:0,oy:0,x:0,y:0,mag:0}, rj={active:false,id:-1,ox:0,oy:0,ang:0,mag:0};
 const JR=72;   // 조이스틱 반경
 canvas.style.touchAction="none";
@@ -727,7 +723,7 @@ function resetGame(){
   player.sp=player.spMax; player.spRegen=0; player.slide=0; player.invuln=0; player.slowT=0; player.svx=0; player.svy=0; player.vel=0;
   player.medkits=player.medMax; player.healT=0; player.healing=false;
   initAllWeapons();
-  slots=[ {type:"gun",wi:widx("ar")}, {type:"gun",wi:null}, {type:"tac",ti:0} ]; activeSlot=0; firing=false; mobileAimHoldT=0; mobileAimHoldTarget=null; lockTarget=null;
+  slots=[ {type:"gun",wi:widx("ar")}, {type:"gun",wi:null}, {type:"tac",ti:0} ]; activeSlot=0; firing=false;
   spreadCur=0; recoilV=0; recoilH=0;
   turretVariant=0; TACTICALS.forEach(t=>{ t.charges=t.max; t.rt=0; });
   enemies=[]; bullets=[]; pods=[]; craters=[]; grenades=[]; turrets=[]; missiles=[]; dropships=[];
@@ -975,9 +971,6 @@ function acquireTarget(ang,cone,range){ range=range||1200; let best=null,bd=1e9;
   for(const e of enemies){ if(!e.alive) continue; const dx=e.x-player.x,dy=e.y-player.y,d=Math.hypot(dx,dy); if(d>range||d>=bd) continue;
     let da=Math.atan2(dy,dx)-ang; while(da>Math.PI)da-=6.283; while(da<-Math.PI)da+=6.283; if(Math.abs(da)<cone){ bd=d; best=e; } }
   return best; }
-function validMobileAimTarget(t){   // 모바일 조준 유지 가능 여부
-  return !!(t&&t.alive&&Math.hypot(t.x-player.x,t.y-player.y)<=activeAimRange()+80&&!coverBetween(player.x,player.y,t.x,t.y));
-}
 function worldMouse(){ const z=camZoom(); return { x:cam.x+mouse.x/z, y:cam.y+mouse.y/z }; }
 // 크로스헤어 = 마우스 위치 + 반동 오프셋(에임방향=수직, 수직방향=좌우)
 function crosshairScreen(){ const ax=Math.cos(player.aim),ay=Math.sin(player.aim),px=-ay,py=ax;
@@ -2143,16 +2136,9 @@ function updatePlayer(dt){
       lockTarget=tgt;
       if(tgt&&tgt.alive){ want=Math.atan2(tgt.y-player.y,tgt.x-player.x); wd=Math.min(activeAimRange(),Math.hypot(tgt.x-player.x,tgt.y-player.y)); }
     } else {
-      if(mobileAimHoldT>0 && validMobileAimTarget(mobileAimHoldTarget)){
-        mobileAimHoldT-=dt;
-        lockTarget=mobileAimHoldTarget;
-        want=Math.atan2(lockTarget.y-player.y,lockTarget.x-player.x);
-        wd=Math.min(activeAimRange(),Math.hypot(lockTarget.x-player.x,lockTarget.y-player.y));
-      } else {
-        mobileAimHoldT=0; mobileAimHoldTarget=null; lockTarget=null;
-        if(touchMove.active) want=Math.atan2(touchMove.y,touchMove.x);
-        else want=player.aim;
-      }
+      lockTarget=null;
+      if(touchMove.active) want=Math.atan2(touchMove.y,touchMove.x);
+      else want=player.aim;
     }
     const wx=(lockTarget&&lockTarget.alive)?lockTarget.x:player.x+Math.cos(want)*wd;
     const wy=(lockTarget&&lockTarget.alive)?lockTarget.y:player.y+Math.sin(want)*wd;
