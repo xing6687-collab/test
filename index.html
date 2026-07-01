@@ -640,8 +640,11 @@ addEventListener("keydown",e=>{
 addEventListener("keyup",e=>{keys[e.code]=false;});
 function primaryDown(){ if(!running||buyOpen) return;   // 사격/투척 시작(마우스·터치 공용)
   if(heldBeacon>=0){ throwHeldBeacon(); return; }
-  if(slots[activeSlot].type==="gun"){ firing=true; shoot(); } else useTactical(); }
-function primaryUp(){ const w=activeGun(); if(w&&w.charge&&chargeT>0) releaseRailgun(); firing=false; }
+  if(slots[activeSlot].type==="gun"){ firing=true; if(isTouch){ mobileAimHoldT=0; mobileAimHoldTarget=null; } shoot(); } else useTactical(); }
+function primaryUp(){ const w=activeGun(); if(w&&w.charge&&chargeT>0) releaseRailgun();
+  if(isTouch && firing && validMobileAimTarget(lockTarget)){ mobileAimHoldTarget=lockTarget; mobileAimHoldT=3.0; }   // 사격 후 3초간 타겟 조준 유지
+  firing=false;
+}
 canvas.addEventListener("mousemove",e=>{ if(isTouch) return; const r=canvas.getBoundingClientRect(); mouse.x=e.clientX-r.left; mouse.y=e.clientY-r.top; });
 canvas.addEventListener("mousedown",e=>{ if(isTouch||e.button!==0) return; primaryDown(); });
 addEventListener("mouseup",e=>{ if(isTouch||e.button!==0) return; primaryUp(); });
@@ -662,6 +665,7 @@ function renderDiffSel(){
 renderDiffSel();
 // ===== 모바일 터치 (트윈스틱: 좌=이동, 우=조준+자동사격) =====
 let isTouch=false, touchMove={active:false,x:0,y:0,mag:0}, mapHold=false, mapHoldId=-1, throwAim=false;
+let mobileAimHoldT=0, mobileAimHoldTarget=null;   // 모바일: 사격 종료 후 잠시 타겟 조준 유지
 let lj={active:false,id:-1,ox:0,oy:0,x:0,y:0,mag:0}, rj={active:false,id:-1,ox:0,oy:0,ang:0,mag:0};
 const JR=72;   // 조이스틱 반경
 canvas.style.touchAction="none";
@@ -723,7 +727,7 @@ function resetGame(){
   player.sp=player.spMax; player.spRegen=0; player.slide=0; player.invuln=0; player.slowT=0; player.svx=0; player.svy=0; player.vel=0;
   player.medkits=player.medMax; player.healT=0; player.healing=false;
   initAllWeapons();
-  slots=[ {type:"gun",wi:widx("ar")}, {type:"gun",wi:null}, {type:"tac",ti:0} ]; activeSlot=0; firing=false;
+  slots=[ {type:"gun",wi:widx("ar")}, {type:"gun",wi:null}, {type:"tac",ti:0} ]; activeSlot=0; firing=false; mobileAimHoldT=0; mobileAimHoldTarget=null; lockTarget=null;
   spreadCur=0; recoilV=0; recoilH=0;
   turretVariant=0; TACTICALS.forEach(t=>{ t.charges=t.max; t.rt=0; });
   enemies=[]; bullets=[]; pods=[]; craters=[]; grenades=[]; turrets=[]; missiles=[]; dropships=[];
@@ -971,11 +975,59 @@ function acquireTarget(ang,cone,range){ range=range||1200; let best=null,bd=1e9;
   for(const e of enemies){ if(!e.alive) continue; const dx=e.x-player.x,dy=e.y-player.y,d=Math.hypot(dx,dy); if(d>range||d>=bd) continue;
     let da=Math.atan2(dy,dx)-ang; while(da>Math.PI)da-=6.283; while(da<-Math.PI)da+=6.283; if(Math.abs(da)<cone){ bd=d; best=e; } }
   return best; }
+function validMobileAimTarget(t){   // 모바일 조준 유지 가능 여부
+  return !!(t&&t.alive&&Math.hypot(t.x-player.x,t.y-player.y)<=activeAimRange()+80&&!coverBetween(player.x,player.y,t.x,t.y));
+}
 function worldMouse(){ const z=camZoom(); return { x:cam.x+mouse.x/z, y:cam.y+mouse.y/z }; }
 // 크로스헤어 = 마우스 위치 + 반동 오프셋(에임방향=수직, 수직방향=좌우)
 function crosshairScreen(){ const ax=Math.cos(player.aim),ay=Math.sin(player.aim),px=-ay,py=ax;
+  if(isTouch){   // 모바일: 에임어시스트 대상이 있으면 크로스헤어를 적에게 고정, 없으면 캐릭터 정면 일정 거리
+    const z=camZoom();
+    let wx=player.x+ax*mobileAimDefaultDist(), wy=player.y+ay*mobileAimDefaultDist();
+    if(lockTarget&&lockTarget.alive){ wx=lockTarget.x; wy=lockTarget.y; }
+    return { x:(wx-cam.x)*z, y:(wy-cam.y)*z };
+  }
   return { x:mouse.x+ax*recoilV+px*recoilH, y:mouse.y+ay*recoilV+py*recoilH }; }
 function crosshairWorld(){ const c=crosshairScreen(), z=camZoom(); return { x:cam.x+c.x/z, y:cam.y+c.y/z }; }
+function activeAimRange(){   // 캐릭터 정면 조준선 길이 = 현재 장비의 실제 사거리
+  if(heldBeacon>=0) return 520;
+  const w=activeGun(); if(w) return w.range||720;
+  const sl=slots[activeSlot]; if(sl&&sl.type==="tac") return TACTICALS[sl.ti].kind==="turret"?360:440;
+  return 520;
+}
+function mobileAimDefaultDist(){ return Math.min(520,Math.max(230,activeAimRange()*0.45)); }
+function segRayRectDist(px,py,dx,dy,maxD,r){   // 레이 vs AABB, 맞으면 시작점부터 거리
+  const x1=r.x, y1=r.y, x2=r.x+r.w, y2=r.y+r.h; let tmin=0, tmax=maxD;
+  if(Math.abs(dx)<1e-6){ if(px<x1||px>x2) return null; }
+  else { const tx1=(x1-px)/dx, tx2=(x2-px)/dx; tmin=Math.max(tmin,Math.min(tx1,tx2)); tmax=Math.min(tmax,Math.max(tx1,tx2)); }
+  if(Math.abs(dy)<1e-6){ if(py<y1||py>y2) return null; }
+  else { const ty1=(y1-py)/dy, ty2=(y2-py)/dy; tmin=Math.max(tmin,Math.min(ty1,ty2)); tmax=Math.min(tmax,Math.max(ty1,ty2)); }
+  return (tmax>=tmin && tmin>=0 && tmin<=maxD) ? tmin : null;
+}
+function aimImpactPoint(){   // 현재 발사하면 처음 닿을 지점. 없으면 최대 사거리 끝.
+  const w=activeGun(), ch=crosshairWorld();
+  const lob = (w&&w.lob) || (slots[activeSlot]&&slots[activeSlot].type==="tac"&&TACTICALS[slots[activeSlot].ti].kind==="throw") || throwAim;
+  if(lob){   // 곡사 무기는 현재 조준 거리와 연동
+    const dx=ch.x-player.x,dy=ch.y-player.y,dist=Math.hypot(dx,dy)||1, d=Math.min(dist,activeAimRange());
+    return {x:player.x+dx/dist*d,y:player.y+dy/dist*d,range:d,lob:true};
+  }
+  const a=player.aim, dx=Math.cos(a), dy=Math.sin(a), maxD=activeAimRange(); let best=maxD, kind="range";
+  for(const e of enemies){ if(!e.alive) continue; const ex=e.x-player.x, ey=e.y-player.y, along=ex*dx+ey*dy; if(along<0||along>best) continue; const side=Math.abs(-ex*dy+ey*dx); if(side<=e.r+3){ best=Math.max(0,along-Math.sqrt(Math.max(0,(e.r+3)*(e.r+3)-side*side))); kind="enemy"; } }
+  for(const c of COVERS){ if(c.dead) continue; const t=segRayRectDist(player.x,player.y,dx,dy,best,c); if(t!=null && t<best){ best=t; kind="cover"; } }
+  if(player.x+dx*best<WALL||player.x+dx*best>WORLD.w-WALL||player.y+dy*best<WALL||player.y+dy*best>WORLD.h-WALL){
+    const wall={x:WALL,y:WALL,w:WORLD.w-WALL*2,h:WORLD.h-WALL*2};
+    // 외벽은 박스 안쪽이라 별도 처리 대신 현재 best 유지
+  }
+  return {x:player.x+dx*best,y:player.y+dy*best,range:best,kind};
+}
+function drawAimImpactUI(){   // 명중 예상 지점 도넛 UI
+  const p=aimImpactPoint(); ctx.save();
+  ctx.strokeStyle=p.lob?"rgba(255,212,93,.95)":(p.kind==="enemy"?"rgba(255,90,90,.95)":(p.kind==="cover"?"rgba(255,170,80,.95)":"rgba(150,210,255,.78)"));
+  ctx.lineWidth=3; ctx.beginPath(); ctx.arc(p.x,p.y,14,0,7); ctx.stroke();
+  ctx.lineWidth=1.5; ctx.globalAlpha=0.65; ctx.beginPath(); ctx.arc(p.x,p.y,5,0,7); ctx.stroke();
+  if(p.lob){ ctx.setLineDash([6,7]); ctx.beginPath(); ctx.moveTo(player.x,player.y); ctx.lineTo(p.x,p.y); ctx.stroke(); }
+  ctx.restore();
+}
 function circleRect(cx,cy,cr,rx,ry,rw,rh){ const nx=Math.max(rx,Math.min(cx,rx+rw)),ny=Math.max(ry,Math.min(cy,ry+rh)); return (cx-nx)**2+(cy-ny)**2<cr*cr; }
 function resolveCovers(o){
   o.x=Math.max(WALL+o.r,Math.min(WORLD.w-WALL-o.r,o.x)); o.y=Math.max(WALL+o.r,Math.min(WORLD.h-WALL-o.r,o.y));
@@ -1021,13 +1073,13 @@ function shoot(){
   const ch=crosshairWorld();
   const aimDist=Math.hypot(ch.x-player.x,ch.y-player.y);
   if(w.bounce && aimDist<300){   // 가까운 땅을 조준 → 통통 튕기며 날아가는 발사체
-    spawnBouncer(player.x,player.y,Math.atan2(ch.y-player.y,ch.x-player.x),w);
+    spawnBouncer(player.x,player.y,player.aim,w);
   } else if(w.lob){   // 유탄발사기: 크로스헤어 위치로 곡사(포물선) → 착탄 폭발
     const dd=Math.hypot(ch.x-player.x,ch.y-player.y), dur=Math.max(0.45,Math.min(1.15,dd/680));
     grenades.push({sx:player.x,sy:player.y,x:player.x,y:player.y,tx:ch.x,ty:ch.y,t:0,dur,z:0,dmg:w.dmg,radius:w.splash,pen:w.pen,color:w.color});
   } else {
     // 발사 방향 = 플레이어→(반동 반영된 크로스헤어) + 스프레드 오차
-    const fireAim=Math.atan2(ch.y-player.y, ch.x-player.x);
+    const fireAim=player.aim;
     const pellets=w.pellets||1, life=(w.range||720)/w.bspd;   // 사거리/속도 = 체공시간
     let psp=spreadCur;
     if(w.distSpread){ const dd=Math.hypot(ch.x-player.x,ch.y-player.y), t=Math.min(1,dd/w.range); psp=w.spreadMax*(1-t)+w.spreadBase*t; }   // 샷건: 가까이 조준=넓게, 멀리=좁게
@@ -2081,18 +2133,30 @@ function startSlide(){
 }
 function updatePlayer(dt){
   const px0=player.x, py0=player.y;
-  if(isTouch){   // 모바일 조준 모델 — 목표 월드좌표를 카메라 기준으로 mouse에 역산(기존 조준/사격 로직 재사용)
-    const Z=camZoom(); let want=null, wd=300;
-    if(rj.active && throwAim){ want=rj.ang; wd=rj.mag*560; }                           // 투척 조준: 방향+거리(당긴 만큼, 안 당기면 바로 앞)
-    else if(rj.active){                                                                // 사격: 자동조준
+  if(isTouch){   // 모바일 조준 모델: 대상 있으면 크로스헤어를 적에게 붙이고, 없으면 캐릭터 정면 일정 거리
+    const Z=camZoom(); let want=null, wd=mobileAimDefaultDist();
+    if(rj.active && throwAim){ want=rj.ang; wd=Math.max(70,rj.mag*560); lockTarget=null; }   // 투척 조준: 당긴 거리만큼
+    else if(rj.active){
       let tgt=lockTarget;
-      if(rj.mag>0.22){ want=rj.ang; tgt=acquireTarget(rj.ang,0.3)||acquireTarget(rj.ang,0.6)||acquireTarget(rj.ang,7,320); }  // 드래그=그 방향 조준선 최근접(없으면 아주 가까운 적)
-      else { if(!tgt||!tgt.alive) tgt=acquireTarget(player.aim,0.7)||acquireTarget(player.aim,7,340); want=player.aim; }   // 가만히=정면 획득, 없으면 다른 방향이라도 매우 가까운 적 우선
+      if(rj.mag>0.22){ want=rj.ang; tgt=acquireTarget(rj.ang,0.26,activeAimRange())||acquireTarget(rj.ang,0.55,activeAimRange())||acquireTarget(rj.ang,7,340); }
+      else { if(!tgt||!tgt.alive) tgt=acquireTarget(player.aim,0.6,activeAimRange())||acquireTarget(player.aim,7,340); want=player.aim; }
       lockTarget=tgt;
-      if(tgt&&tgt.alive){ want=Math.atan2(tgt.y-player.y,tgt.x-player.x); wd=Math.min(900,Math.hypot(tgt.x-player.x,tgt.y-player.y)); }
-      else wd=400;
-    } else { lockTarget=null; if(touchMove.active){ want=Math.atan2(touchMove.y,touchMove.x); wd=150; } }   // 비사격: 이동 방향으로 회전
-    if(want!=null){ const wx=player.x+Math.cos(want)*wd, wy=player.y+Math.sin(want)*wd; mouse.x=(wx-cam.x)*Z; mouse.y=(wy-cam.y)*Z; }
+      if(tgt&&tgt.alive){ want=Math.atan2(tgt.y-player.y,tgt.x-player.x); wd=Math.min(activeAimRange(),Math.hypot(tgt.x-player.x,tgt.y-player.y)); }
+    } else {
+      if(mobileAimHoldT>0 && validMobileAimTarget(mobileAimHoldTarget)){
+        mobileAimHoldT-=dt;
+        lockTarget=mobileAimHoldTarget;
+        want=Math.atan2(lockTarget.y-player.y,lockTarget.x-player.x);
+        wd=Math.min(activeAimRange(),Math.hypot(lockTarget.x-player.x,lockTarget.y-player.y));
+      } else {
+        mobileAimHoldT=0; mobileAimHoldTarget=null; lockTarget=null;
+        if(touchMove.active) want=Math.atan2(touchMove.y,touchMove.x);
+        else want=player.aim;
+      }
+    }
+    const wx=(lockTarget&&lockTarget.alive)?lockTarget.x:player.x+Math.cos(want)*wd;
+    const wy=(lockTarget&&lockTarget.alive)?lockTarget.y:player.y+Math.sin(want)*wd;
+    mouse.x=(wx-cam.x)*Z; mouse.y=(wy-cam.y)*Z;
   }
   playerInBush=false; for(const bu of bushes){ if((player.x-bu.x)**2+(player.y-bu.y)**2 < bu.r*bu.r){ playerInBush=true; break; } }   // 수풀(플레이어만): 감속+은폐
   if(player.slide>0){   // 공중 슬라이딩(이동방향으로 짧게 빠르게)
@@ -2312,6 +2376,7 @@ function render(){
   drawRods();         // 통통 튀는 신의 지팡이
   drawBouncers();     // 통통 튀는 유탄/포탄
   drawThrowGhost();   // 투척 조준 고스트(월드)
+  drawAimImpactUI();  // 현재 발사/투척 예상 명중 지점 도넛 UI
   drawPops();         // 의성어 팝업
   drawBushes();   // 수풀 캐노피(엔티티 위 — 은폐)
   ctx.restore();
@@ -2671,7 +2736,7 @@ function drawPlayer(){
     ctx.fillStyle="#dffded"; ctx.font="10px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="bottom"; ctx.fillText("💉 회복 중...",player.x,cy-2);
   }
   const sl=slots[activeSlot], heldColor=sl.type==="gun"?WEAPONS[sl.wi].color:TACTICALS[sl.ti].color;
-  ctx.strokeStyle="rgba(255,255,255,.15)"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(player.x,player.y); ctx.lineTo(player.x+Math.cos(player.aim)*700,player.y+Math.sin(player.aim)*700); ctx.stroke();
+  { const ar=activeAimRange(); ctx.strokeStyle="rgba(255,255,255,.15)"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(player.x,player.y); ctx.lineTo(player.x+Math.cos(player.aim)*ar,player.y+Math.sin(player.aim)*ar); ctx.stroke(); }
   if(player.exhausted){   // 쭈글하고 비틀비틀
     const t=performance.now()/110; ctx.save(); ctx.translate(player.x+Math.sin(t*1.4)*3, player.y+Math.cos(t*2.1)*1.5); ctx.rotate(Math.sin(t)*0.2); ctx.scale(1.18,0.78);
     ctx.fillStyle="#3f7d4f"; ctx.beginPath(); ctx.arc(0,0,player.r,0,7); ctx.fill(); ctx.strokeStyle="#13301d"; ctx.lineWidth=2.6; ctx.stroke(); ctx.restore();
