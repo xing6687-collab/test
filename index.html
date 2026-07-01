@@ -59,6 +59,14 @@
   #buyMenu .item.cant{opacity:.45;}
   #buyMenu .foot{margin-top:14px;color:#9f9f9f;font-size:.82rem;text-align:center;}
 
+  #overlay .briefing{margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.12);}
+  #overlay .briefing .line{margin:3px 0;}
+  #overlay .briefing .stars{color:#ffd45d;letter-spacing:1px;}
+  #overlay .briefing .rec{color:#7CFFB2;font-weight:700;}
+  #buyMenu .item.recommended{background:rgba(255,212,93,.13);border:1px solid rgba(255,212,93,.45);}
+  #buyMenu .item .recommend{display:inline-block;margin-left:6px;padding:2px 5px;border-radius:5px;background:#ffd45d;color:#141414;font-weight:900;font-size:.68rem;text-shadow:none;}
+  #buyMenu .item .why{color:#7CFFB2;font-size:.74rem;margin-left:8px;}
+
   #overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:safe center;
            background:rgba(5,5,10,.9);color:#fff;text-align:center;z-index:10;padding:16px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
   #overlay h1{font-size:clamp(1.5rem,7vw,2.8rem);letter-spacing:3px;margin-bottom:4px;
@@ -563,20 +571,96 @@ const ETYPE={
   brood:   {name:"증식체",      hp:130,armor:1, speed:96, reward:180,melee:24, rmin:30,rmax:40, ranged:false,color:"#eef0f6",splits:[10,15]},  // 흰색 대형 — 죽으면 분화체로 분열
   spawnling:{name:"분화체",     hp:5,  armor:0, speed:210,reward:8,  melee:10, rmin:7, rmax:11, ranged:false,color:"#b46bff"},  // 작은 보라 — 빠른 떼
 };
-// 적 스폰 조합 컨셉 — 매 판 무작위로 1개 선택(가중치 기반). w=종류별 출현 가중치
-const BATTLE_THEMES=[
-  {name:"물량 돌격",   icon:"🐝", desc:"경장갑 감염체 떼거리 — 광역기·높은 회전율로 쓸어담아라", w:{infected:88,mech:5, heavy:1, breacher:4, flyer:4}},
-  {name:"사격 진지",   icon:"🎯", desc:"원거리 기계화병 다수 — 엄폐물 끼고 우회·접근하라",      w:{infected:32,mech:54,heavy:3, breacher:5, flyer:10}},
-  {name:"중장갑의 날", icon:"🛡️", desc:"중장갑 개체 대량 출현 — 대전차 화력(저격·유탄·레일건·로켓·폭격) 필수", w:{infected:34,mech:16,heavy:32,breacher:8,charger:10}},
-  {name:"공성 부대",   icon:"🧨", desc:"공성체가 엄폐물을 부순다 — 진지가 빠르게 무너진다",      w:{infected:46,mech:10,heavy:6, breacher:38}},
-  {name:"강습 돌격",   icon:"🐗", desc:"돌격병 다수(대·소형) — 윈드업을 보고 횡스텝·슬라이딩으로 돌진을 흘려라", w:{infected:30,mech:6, heavy:6, breacher:4, charger:28, charger_s:26}},
-  {name:"비행 강습",   icon:"🦇", desc:"날개 달린 비행병 다수 — 점프 덮치기에 주의, 회피하며 정밀 사격", w:{infected:30,mech:14,heavy:4, breacher:4, flyer:48}},
-  {name:"정예 혼성",   icon:"⚔️", desc:"기계화병+중장갑 정예 조합 — 균형 잡힌 대응이 필요하다",  w:{infected:22,mech:38,heavy:16,breacher:6,charger:8, flyer:8, brood:6}},
-  {name:"증식 군체",   icon:"🟣", desc:"증식체 다수 — 잡으면 분화체 떼로 분열하니 광역기로 정리하라", w:{infected:30,mech:8, heavy:4, brood:34, flyer:6}},
-  {name:"표준 교전",   icon:"🪖", desc:"표준적인 적 구성",                                       w:{infected:74,mech:12,heavy:2, breacher:4, flyer:6, charger_s:6, brood:4}},
+// 작전 메타 — 난이도별로 후보 풀이 열리고, 하위 메타는 상위 난이도에서 강화되어 재등장한다.
+// w=실제 스폰 가중치, threat=브리핑 표시용 위협도(0~5), rec=구매 UI 추천 화력.
+const OPERATION_METAS=[
+  {name:"감염체 확산", icon:"🐝", minLv:1, desc:"경장갑 물량 중심 — 기본 총기와 광역 화력으로 전선을 유지하라", weight:5,
+    threat:{inf:5,mech:1,heavy:0.5,anti:0}, w:{infected:84,mech:10,heavy:1,breacher:2,charger_s:2,flyer:1},
+    rec:[{kind:"weapon",id:"fsmg",why:"경장갑 물량 제압"},{kind:"weapon",id:"fl",why:"좁은 길 화염 차단"},{kind:"bomb",id:2,why:"네이팜으로 전선 유지"},{kind:"turret",id:2,why:"화염 포탑으로 길목 봉쇄"}]},
+  {name:"기계화 순찰", icon:"🎯", minLv:1, desc:"일반 장갑 기계화병 중심 — 관통 1~2 화력으로 안정적으로 처리하라", weight:4,
+    threat:{inf:2,mech:5,heavy:0.5,anti:0}, w:{infected:36,mech:56,heavy:1,breacher:3,flyer:3,charger_s:1},
+    rec:[{kind:"weapon",id:"dmr",why:"일반 장갑 정밀 처리"},{kind:"weapon",id:"lmg",why:"일반 장갑 지속 화력"},{kind:"weapon",id:"mg",why:"중기관총으로 전선 유지"},{kind:"drone",id:0,why:"경장갑 보조 처리"}]},
+  {name:"중장갑 징후", icon:"🛡️", minLv:1, desc:"저레벨 학습용 중장갑 소수 출현 — 레일건/유탄의 필요성을 체험하라", weight:2,
+    threat:{inf:4,mech:2,heavy:1,anti:0}, w:{infected:58,mech:24,heavy:5,breacher:5,charger_s:5,flyer:3},
+    rec:[{kind:"weapon",id:"gl",why:"중장갑 학습 대응"},{kind:"weapon",id:"sr",why:"중장갑 관통 체험"},{kind:"weapon",id:"rg",why:"고장갑 단일 제압"},{kind:"bomb",id:1,why:"큰 표적 즉시 제거"}]},
+  {name:"공성 부대", icon:"🧨", minLv:3, desc:"공성체가 엄폐물을 무너뜨림 — 폭발/산탄/포탑으로 붕괴 지점을 막아라", weight:3,
+    threat:{inf:3,mech:2,heavy:1,anti:0}, w:{infected:42,mech:12,heavy:4,breacher:34,charger_s:6,flyer:2},
+    rec:[{kind:"weapon",id:"ksg",why:"공성체 넉백"},{kind:"weapon",id:"gl",why:"엄폐 뒤 적 광역 처리"},{kind:"turret",id:1,why:"로켓 포탑으로 돌파 차단"},{kind:"bomb",id:0,why:"고폭탄으로 밀집 제거"}]},
+  {name:"강습 돌격", icon:"🐗", minLv:4, desc:"돌격병이 전선을 뚫고 들어옴 — 슬라이딩과 순간 화력으로 거리를 벌려라", weight:3,
+    threat:{inf:3,mech:1,heavy:2,anti:0}, w:{infected:34,mech:8,heavy:5,breacher:4,charger:18,charger_s:28,flyer:3},
+    rec:[{kind:"weapon",id:"ksg",why:"돌격 저지 넉백"},{kind:"weapon",id:"apr",why:"고관통 긴급 대응"},{kind:"weapon",id:"rg",why:"돌격 대형 즉시 제압"},{kind:"air",id:0,why:"기총소사로 돌파선 절단"}]},
+  {name:"비행 강습", icon:"🦇", minLv:5, desc:"비행 개체가 후방을 흔듦 — 정밀 사격과 드론 보조가 중요하다", weight:3,
+    threat:{inf:2,mech:2,heavy:1,anti:0}, w:{infected:28,mech:14,heavy:4,breacher:3,flyer:42,charger_s:5,brood:4},
+    rec:[{kind:"weapon",id:"dmr",why:"비행 개체 정밀 사격"},{kind:"weapon",id:"apr",why:"고관통 단발 대응"},{kind:"drone",id:4,why:"투사체/후방 보조"},{kind:"turret",id:0,why:"기관총 포탑 대공 보조"}]},
+  {name:"장갑 호송", icon:"🚚", minLv:6, desc:"중장갑이 전선 중앙을 밀고 들어옴 — 대전차 화력을 준비하라", weight:3,
+    threat:{inf:2,mech:3,heavy:4,anti:1}, w:{infected:28,mech:24,heavy:24,breacher:6,charger:12,charger_s:4,brood:2},
+    rec:[{kind:"weapon",id:"rg",why:"중장갑 핵심 대응"},{kind:"weapon",id:"at",why:"대형 표적 폭발 처리"},{kind:"weapon",id:"gl",why:"중장갑 보조+광역"},{kind:"bomb",id:1,why:"가장 큰 표적 제거"}]},
+  {name:"증식 군체", icon:"🟣", minLv:6, desc:"증식체가 분화체 떼로 갈라짐 — 폭살과 화염으로 분열을 차단하라", weight:2,
+    threat:{inf:4,mech:1,heavy:2,anti:0}, w:{infected:28,mech:8,heavy:4,brood:32,flyer:5,breacher:5,charger_s:8},
+    rec:[{kind:"weapon",id:"gl",why:"폭발로 분열 차단"},{kind:"weapon",id:"fl",why:"분화체 화염 제압"},{kind:"bomb",id:2,why:"네이팜 구역 봉쇄"},{kind:"air",id:1,why:"융단폭격으로 군체 정리"}]},
+  {name:"외계 정예", icon:"⚔️", minLv:7, desc:"소수 고장갑 정예와 일반 병력이 섞임 — 화력 분배가 중요하다", weight:2,
+    threat:{inf:2,mech:3,heavy:4,anti:2}, w:{infected:20,mech:30,heavy:18,breacher:6,charger:10,flyer:8,brood:8},
+    rec:[{kind:"weapon",id:"rg",why:"정예 고장갑 제압"},{kind:"weapon",id:"atc",why:"대전차 직사 화력"},{kind:"weapon",id:"mg",why:"일반장갑 전선 유지"},{kind:"air",id:2,why:"최후의 전황 복구"}]},
+  {name:"대전차 돌파", icon:"🚨", minLv:8, desc:"대전차 장갑급 위협이 등장 — 최고 화력과 폭격을 아끼지 마라", weight:1,
+    threat:{inf:2,mech:2,heavy:5,anti:4}, w:{infected:18,mech:20,heavy:20,breacher:8,charger:18,brood:6,flyer:4},
+    rec:[{kind:"weapon",id:"rg",why:"대전차 장갑 대응"},{kind:"weapon",id:"at",why:"고장갑 폭발 처리"},{kind:"weapon",id:"nuke",why:"최대 화력 판타지"},{kind:"air",id:2,why:"전술핵으로 전황 복구"}]},
 ];
-let battleTheme=BATTLE_THEMES[0];
+let battleTheme=OPERATION_METAS[0], operationMeta=OPERATION_METAS[0];
 function pickKind(w){ let tot=0; for(const k in w) tot+=w[k]; let r=Math.random()*tot; for(const k in w){ r-=w[k]; if(r<=0) return k; } return "infected"; }
+function cloneWeights(w){ const o={}; for(const k in w)o[k]=w[k]; return o; }
+function levelAdjustedMeta(base,L){
+  const w=cloneWeights(base.w), grow=Math.max(0,L-base.minLv);
+  const hard={heavy:1,charger:1,charger_s:1,brood:1,breacher:1,flyer:1};
+  for(const k in w){ if(hard[k]) w[k]*=(1+grow*0.12); else if(k==="infected") w[k]*=Math.max(0.72,1-grow*0.035); }
+  // 저레벨도 중장갑을 '학습'할 수 있게 최소 소량 보장. 단, 대량 출현은 상위 메타에서만.
+  if(L<=2){ w.heavy=Math.max(w.heavy||0, L===1?0.8:1.6); w.charger_s=Math.max(w.charger_s||0, L===1?0.6:1.2); }
+  if(L>=4) w.heavy=Math.max(w.heavy||0,3+L*0.45);
+  const threat={...base.threat}; threat.heavy=Math.min(5,(threat.heavy||0)+grow*0.25); if(L>=8) threat.anti=Math.min(5,(threat.anti||0)+1);
+  return {...base,w,threat,levelGrow:grow};
+}
+function chooseOperationMeta(){
+  const candidates=OPERATION_METAS.filter(m=>m.minLv<=difficulty);
+  let total=0; const weighted=candidates.map(m=>{ const age=Math.max(0,difficulty-m.minLv); const v=(m.weight||1)*(1+Math.min(3,age)*0.15); total+=v; return [m,v]; });
+  let r=Math.random()*total; for(const [m,v] of weighted){ r-=v; if(r<=0) return levelAdjustedMeta(m,difficulty); }
+  return levelAdjustedMeta(candidates[0]||OPERATION_METAS[0],difficulty);
+}
+function star(v){ v=Math.max(0,Math.min(5,Math.round(v))); return "★★★★★".slice(0,v)+"☆☆☆☆☆".slice(0,5-v); }
+function recMatch(kind,id){ return operationMeta && operationMeta.rec && operationMeta.rec.find(r=>r.kind===kind && r.id===id); }
+function recHtml(kind,id){ const r=recMatch(kind,id); return r?`<span class="recommend">추천!</span><span class="why">${r.why}</span>`:""; }
+function itemRecClass(kind,id){ return recMatch(kind,id)?" recommended":""; }
+function operationBriefingHTML(){
+  const m=operationMeta||chooseOperationMeta(), t=m.threat||{};
+  const rec=(m.rec||[]).slice(0,3).map(r=>`<span class="rec">추천</span> ${recName(r)} <span style="color:#9fb4c8">— ${r.why}</span>`).join("<br>");
+  return `<div><b>작전 브리핑:</b> ${m.icon} ${m.name} <span style="color:#9fb4c8">Lv.${difficulty} ${DIFF_NAMES[difficulty-1]}</span></div>
+    <div style="margin-top:6px;color:#cfe">${m.desc}</div>
+    <div class="briefing">
+      <div class="line">감염체 활동 <span class="stars">${star(t.inf||0)}</span></div>
+      <div class="line">기계화 부대 <span class="stars">${star(t.mech||0)}</span></div>
+      <div class="line">중장갑 출현 <span class="stars">${star(t.heavy||0)}</span></div>
+      <div class="line">대전차 위협 <span class="stars">${star(t.anti||0)}</span></div>
+      <div class="line" style="margin-top:7px">${rec}</div>
+    </div>`;
+}
+function recName(r){
+  if(r.kind==="weapon"){ const idx=widx(r.id); return idx>=0?WEAPONS[idx].name:r.id; }
+  if(r.kind==="bomb") return BOMB_TYPES[r.id]?.name||"폭격";
+  if(r.kind==="air") return AIR_TYPES[r.id]?.name||"공습";
+  if(r.kind==="turret") return TURRET_VARIANTS[r.id]?.name||"포탑";
+  if(r.kind==="drone") return DRONE_TYPES[r.id]?.name||"드론";
+  return "화력";
+}
+function refreshBriefingPanel(){ const panel=overlay&&overlay.querySelector(".panel"); if(panel) panel.innerHTML=operationBriefingHTML(); }
+function spawnBountyTarget(){
+  if(!operationMeta) return;
+  const chance=difficulty<=2?0.85:(difficulty<=5?0.45:0.25);
+  if(Math.random()>chance) return;
+  const o=objectives[Math.floor(Math.random()*objectives.length)]||{x:WORLD.w*0.5,y:WORLD.h*0.5,r:80};
+  const kind=difficulty>=8?"charger":(difficulty>=4?"heavy":"heavy");
+  const a=Math.random()*7,d=(o.r||70)+260+Math.random()*220,sq=nextSquad++;
+  spawnEnemy(kind,clampX(o.x+Math.cos(a)*d),clampY(o.y+Math.sin(a)*d),"guard",{x:o.x,y:o.y},null,sq);
+  const e=enemies[enemies.length-1]; e.bounty=true; e.bountyReward=difficulty<=2?2500:(difficulty<8?3500:5000); e.icon="🎖️"; e.iconT=999;
+  pushLog(`🎖️ 특수 토벌: ${e.type.name} 처치 보상 +${e.bountyReward}C`,'#ffd45d');
+}
 
 // ===== 지형 바이옴 — 매판 랜덤(적 조합과 별개). 바닥색/그리드 + 데코 밀도 + 선호 프리팹 세트 =====
 const BIOMES=[
@@ -718,12 +802,13 @@ startBtn.addEventListener("click",startOrResume);
 reviveBtn.addEventListener("pointerup",e=>{ e.preventDefault(); doRevive(); });
 // ----- 난이도 선택 UI -----
 function renderDiffSel(){
+  if(!operationMeta || operationMeta.minLv>difficulty) operationMeta=chooseOperationMeta();
   diffBtnsEl.innerHTML="";
   for(let L=1;L<=10;L++){ const b=document.createElement("button");
     b.className="dbtn"+(L===difficulty?" sel":""); b.textContent=L;
-    b.addEventListener("pointerup",ev=>{ ev.preventDefault(); applyDifficulty(L); renderDiffSel(); });
+    b.addEventListener("pointerup",ev=>{ ev.preventDefault(); applyDifficulty(L); operationMeta=chooseOperationMeta(); renderDiffSel(); });
     diffBtnsEl.appendChild(b); }
-  diffNameEl.textContent=DIFF_NAMES[difficulty-1]; diffNumEl.textContent="Lv."+difficulty; diffDescEl.textContent=DIFF_DESC[difficulty-1];
+  diffNameEl.textContent=DIFF_NAMES[difficulty-1]; diffNumEl.textContent="Lv."+difficulty; diffDescEl.textContent=DIFF_DESC[difficulty-1]+" · "+operationMeta.icon+" "+operationMeta.name; refreshBriefingPanel();
 }
 renderDiffSel();
 // ===== 모바일 터치 (트윈스틱: 좌=이동, 우=조준+자동사격) =====
@@ -800,10 +885,11 @@ function resetGame(){
   nextSquad=1; squadProp={}; rings=[]; gunfireT=0; shake=0; barricadeCD=0; crates=[]; booms=[];
   airstrikes=[]; chargeT=0; nukeFlash=0; lasers=[]; flameSnd=0; lure=null; drone=null; dbeams=[]; shuttles=[]; scatters=[];
   rocket={state:"idle",z:0,timer:30}; logLines=[]; reviveCount=0;
-  battleTheme=biasedTheme(BATTLE_THEMES[Math.floor(Math.random()*BATTLE_THEMES.length)]);   // 이번 작전 적 조합(+난이도 보정)
+  operationMeta=chooseOperationMeta();
+  battleTheme=operationMeta;   // 이번 작전 메타(+난이도/하위 메타 강화 반영)
   biome=BIOMES[Math.floor(Math.random()*BIOMES.length)];   // 이번 작전 지형 바이옴
   playerInBush=false;
-  placeExit(); makeObjectives(); genCovers(); populateWorld(); started=true;
+  placeExit(); makeObjectives(); genCovers(); populateWorld(); spawnBountyTarget(); started=true; refreshBriefingPanel();
   pushLog(`${biome.icon} 지형: 「${biome.name}」 · ${battleTheme.icon} 적: 「${battleTheme.name}」 · 난이도 Lv.${difficulty} 「${DIFF_NAMES[difficulty-1]}」`,"#ffd45d"); toast(`Lv.${difficulty} ${DIFF_NAMES[difficulty-1]} · ${biome.icon}${biome.name} · ${battleTheme.icon}${battleTheme.name}`);
 }
 function showOverlay(t,m,b,hidePanel,showDiff){
@@ -891,7 +977,7 @@ function renderBuy(){
   buyCredits.textContent=Math.floor(player.credits);
   if(buyStage==="main"){
     buyTitle.textContent="📦 전장 배송 카탈로그";
-    buySub.textContent="구매 분류를 선택하세요. (게임은 멈추지 않습니다)";
+    buySub.textContent=`${operationMeta?operationMeta.icon+" "+operationMeta.name+" — "+operationMeta.desc:"구매 분류를 선택하세요."} (게임은 멈추지 않습니다)`;
     buyList.innerHTML=
       `<div class="item"><span><span class="key">1</span><span class="name">화력 구매</span></span><span class="spec">중기관총 · 유탄 · 레일건</span><span class="cost">▶</span></div>`+
       `<div class="item"><span><span class="key">2</span><span class="name">전투기 폭격 (신호기)</span></span><span class="spec">기총소사 · 융단폭격 · 전술핵</span><span class="cost">▶</span></div>`+
@@ -904,14 +990,14 @@ function renderBuy(){
     buySub.textContent="구매 시 드론 가방 장착 — 전투 중 자동 공격, 탄약 소진 시 복귀·재장전. [Backspace] 뒤로";
     const specs=["경장갑·물량 처리에 특화","근접 화염 — 대상에 날아가 공격","중장갑 관통·차지 레이저(소수 정예)","근처에서 보호막 전개(피격 시 소모)","날아오는 적 투사체 요격"];
     buyList.innerHTML=DRONE_TYPES.map((d,i)=>{ const cant=player.credits<DRONE_COST[i]?"cant":"";
-      return `<div class="item ${cant}"><span><span class="key">${i+1}</span><span class="name">${d.name}</span></span>
+      return `<div class="item ${cant}${itemRecClass("drone",i)}"><span><span class="key">${i+1}</span><span class="name">${d.name}${recHtml("drone",i)}</span></span>
               <span class="spec">${specs[i]}</span><span class="cost">${DRONE_COST[i]} C</span></div>`; }).join("");
   } else if(buyStage==="air"){
     buyTitle.textContent="✈️ 전투기 폭격 (좁지만 빠른 대처)";
     buySub.textContent="구매 → 신호기 던지면 1초 뒤 전투기 공습. [Backspace] 뒤로";
     const specs=["전방 좌→우 기총 난사 · 3회 연속 패스 · 대전차 관통·한 방 처치","전방으로 촘촘한 융단폭격 · 대전차 관통·한 방 처치","1초 뒤 핵폭발 · 대전차 관통(좁은 범위 초고화력)"];
     buyList.innerHTML=AIR_TYPES.map((v,i)=>{ const cant=player.credits<AIR_COST[i]?"cant":"";
-      return `<div class="item ${cant}"><span><span class="key">${i+1}</span><span class="name">${v.name}</span></span>
+      return `<div class="item ${cant}${itemRecClass("air",i)}"><span><span class="key">${i+1}</span><span class="name">${v.name}${recHtml("air",i)}</span></span>
               <span class="spec">${specs[i]}</span><span class="cost">${AIR_COST[i]} C</span></div>`; }).join("");
   } else if(buyStage==="bomb"){
     buyTitle.textContent="📡 폭격 신호기 구매";
@@ -919,7 +1005,7 @@ function renderBuy(){
     const specs=["3초 후 10초간 광역 융단폭격 · 일반 장갑","최대 표적에 운동에너지 강하 · 대전차 관통","융단폭격 + 30초 화염 지대 · 일반 장갑"];
     buyList.innerHTML=BOMB_TYPES.map((b,i)=>{
       const cant=player.credits<BOMB_COST[i]?"cant":"";
-      return `<div class="item ${cant}"><span><span class="key">${i+1}</span><span class="name">${b.name}</span></span>
+      return `<div class="item ${cant}${itemRecClass("bomb",i)}"><span><span class="key">${i+1}</span><span class="name">${b.name}${recHtml("bomb",i)}</span></span>
               <span class="spec">${specs[i]}</span><span class="cost">${BOMB_COST[i]} C</span></div>`;
     }).join("");
   } else if(buyStage==="turret"){
@@ -928,7 +1014,7 @@ function renderBuy(){
     buyList.innerHTML=TURRET_VARIANTS.map((v,i)=>{
       const cant=player.credits<v.cost?"cant":"";
       const spec=v.deploy==="mine"?`지뢰 ${v.count}발 자동 매설 · 반경 ${v.radius}`:(v.deploy==="supply"?`보급품 ${v.count}개 살포`:(v.flame?`단거리 원뿔·화상 · ${ARMOR_NAME[v.pen]}`:(v.splash?`미사일 광역 · ${ARMOR_NAME[v.pen]}`:`자동 사격 · ${ARMOR_NAME[v.pen]}`)));
-      return `<div class="item ${cant}"><span><span class="key">${i+1}</span><span class="name">${v.name}</span></span>
+      return `<div class="item ${cant}${itemRecClass("turret",i)}"><span><span class="key">${i+1}</span><span class="name">${v.name}${recHtml("turret",i)}</span></span>
               <span class="spec">${spec}</span><span class="cost">${v.cost} C</span></div>`;
     }).join("");
   } else {
@@ -941,7 +1027,7 @@ function renderBuy(){
       const spec = w.oneshot
         ? `단발 소모형(2개 투하) · ${ARMOR_NAME[w.pen]} · 발사 후 폐기`
         : `장탄 ${w.magSize}+예비${w.reserveMax||0} · ${ARMOR_NAME[w.pen]}${tag}`;
-      return `<div class="item ${cant}"><span><span class="key">${i+1}</span><span class="name">${w.name}</span></span>
+      return `<div class="item ${cant}${itemRecClass("weapon",id)}"><span><span class="key">${i+1}</span><span class="name">${w.name}${recHtml("weapon",id)}</span></span>
               <span class="spec">${spec}</span><span class="cost">${w.cost} C</span></div>`;
     }).join("");
   }
@@ -1327,7 +1413,9 @@ function damageEnemy(e,dmg,pen,noAggro,noCredit,crit,hitDir,noSplit){
     if(noCredit){ pushLog(`☠️ ${e.type.name} 팀킬`,"#caa"); }
     else { kills++; const rw=Math.round(e.type.reward*DIFF.reward); player.credits+=rw; speedUpCooldown(0.3);
       for(const o of objectives){ if(o.type==="kill"&&!o.done&&Math.hypot(o.x-e.x,o.y-e.y)<o.r+280) o.got++; }   // 처치 할당
-      pushLog(`💀 ${e.type.name} +${rw}C`,"#7CFFB2"); } }
+      pushLog(`💀 ${e.type.name} +${rw}C`,"#7CFFB2");
+      if(e.bounty){ player.credits+=e.bountyReward||2500; pushLog(`🎖️ 특수 토벌 완료! +${e.bountyReward||2500}C`,"#ffd45d"); toast("🎖️ 특수 토벌 완료!"); }
+    } }
 }
 function critFx(x,y){   // 치명타(정밀 명중) 연출
   for(let i=0;i<10;i++){ const a=Math.random()*7,s=180+Math.random()*260; particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:0.3,max:0.3,r:2+Math.random()*3,color:i<5?"#fff":"#ffe14d",kind:"spark"}); }
@@ -2639,6 +2727,8 @@ function drawEnemy(e){
   if(e.burn>0){ ctx.font="15px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("🔥",e.x,e.y-e.r-18); }  // 화상 표시
   if(e.tagT>0){ ctx.save(); ctx.strokeStyle="#ff8a3a"; ctx.lineWidth=2.5; ctx.globalAlpha=0.85; ctx.beginPath(); ctx.arc(e.x,e.y,e.r+7,0,7); ctx.stroke(); ctx.restore();
     ctx.font="16px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("📡",e.x,e.y-e.r-34); }  // 신호기 부착 표시
+  if(e.bounty){ ctx.save(); ctx.strokeStyle="#ffd45d"; ctx.lineWidth=3; ctx.globalAlpha=0.9; ctx.setLineDash([6,5]); ctx.beginPath(); ctx.arc(e.x,e.y,e.r+13,0,7); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+    ctx.font="18px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("🎖️",e.x,e.y-e.r-48); }
   // 상태 아이콘: 최초 어그로(!) / 경계(?)
   if(e.aggro && e.iconT>0){ ctx.fillStyle="#ff4d4d"; ctx.font="bold 22px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("!",e.x,e.y-e.r-30); }
   else if(e.alertT>0){ ctx.fillStyle="#ffe14d"; ctx.font="bold 22px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("?",e.x,e.y-e.r-30); }
