@@ -68,39 +68,43 @@
   #buyMenu .item .why{color:#7CFFB2;font-size:.74rem;margin-left:8px;}
 
   /* 추천 배송 UI — 카탈로그 항목 추가가 아니라 AI 전술 보조관 카드로 노출 */
-  #liveRecCard{position:fixed;right:16px;top:50%;transform:translateY(-50%);z-index:7;width:min(286px,32vw);
-    background:rgba(18,20,26,.94);border:2px solid rgba(255,212,93,.85);border-radius:14px;padding:12px 14px;color:#fff;
-    box-shadow:0 14px 42px rgba(0,0,0,.55);pointer-events:auto;text-shadow:0 0 4px #000;transition:width .18s,height .18s,padding .18s,border-radius .18s,opacity .18s;}
+  #liveRecCard{position:fixed;right:14px;top:14px;transform:none;z-index:7;width:min(248px,30vw);
+    background:rgba(18,20,26,.94);border:2px solid rgba(255,212,93,.85);border-radius:13px;padding:9px 11px;color:#fff;
+    box-shadow:0 12px 36px rgba(0,0,0,.52);pointer-events:auto;text-shadow:0 0 4px #000;transition:width .18s,height .18s,padding .18s,border-radius .18s,opacity .18s;}
   #liveRecCard .ricon{display:none;font-size:1.55rem;line-height:1;}
-  #liveRecCard .rtitle{color:#ffd45d;font-size:.86rem;font-weight:900;margin-bottom:4px;}
-  #liveRecCard .rname{font-size:1.18rem;font-weight:900;margin-bottom:3px;}
-  #liveRecCard .rwhy{color:#7CFFB2;font-size:.8rem;line-height:1.35;margin-bottom:9px;}
-  #liveRecCard .rrow{display:flex;align-items:center;gap:8px;}
+  #liveRecCard .rtitle{color:#ffd45d;font-size:.76rem;font-weight:900;margin-bottom:3px;}
+  #liveRecCard .rname{font-size:1rem;font-weight:900;margin-bottom:2px;}
+  #liveRecCard .rwhy{color:#7CFFB2;font-size:.72rem;line-height:1.25;margin-bottom:7px;}
+  #liveRecCard .rrow{display:flex;align-items:center;gap:7px;}
   #liveRecCard button,#startRecommend .recCard button{border:0;border-radius:8px;background:#ffd45d;color:#151515;font-weight:900;cursor:pointer;padding:8px 12px;text-shadow:none;}
-  #liveRecCard .rkey{color:#9fe0ff;font-weight:900;font-size:.82rem;}
-  #liveRecCard .rcost{margin-left:auto;color:#ffd45d;font-weight:900;font-size:.86rem;}
+  #liveRecCard .rkey{color:#9fe0ff;font-weight:900;font-size:.78rem;}
+  #liveRecCard .rcost{margin-left:auto;color:#ffd45d;font-weight:900;font-size:.78rem;}
   #liveRecCard.collapsed{width:54px;height:54px;border-radius:50%;padding:0;display:flex;align-items:center;justify-content:center;opacity:.88;}
   #liveRecCard.collapsed .ricon{display:block;}
   #liveRecCard.collapsed .rbody{display:none;}
-  #liveRecCard.collapsed:hover{opacity:1;transform:translateY(-50%) scale(1.04);}
+  #liveRecCard.collapsed:hover{opacity:1;transform:scale(1.04);}
   #startRecommend{position:fixed;inset:0;z-index:12;display:flex;align-items:center;justify-content:center;background:rgba(5,5,10,.68);padding:18px;pointer-events:auto;}
   #startRecommend .recBox{width:min(860px,94vw);background:rgba(18,20,26,.97);border:2px solid #ffd45d;border-radius:18px;box-shadow:0 22px 70px rgba(0,0,0,.7);padding:18px 20px;color:#fff;text-shadow:0 0 4px #000;}
   #startRecommend h2{color:#ffd45d;margin:0 0 4px;font-size:1.35rem;}
   #startRecommend .desc{color:#c9d5df;font-size:.88rem;margin-bottom:13px;}
   #startRecommend .recGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
   #startRecommend .recCard{background:rgba(255,255,255,.06);border:1px solid rgba(255,212,93,.35);border-radius:12px;padding:12px;min-height:150px;}
+  #startRecommend .recCard.bought{opacity:.44;border-color:rgba(127,255,178,.35);background:rgba(127,255,178,.07);}
+  #startRecommend .recCard.bought button{background:#2a9d5b;color:#fff;cursor:default;}
   #startRecommend .recCard .rtype{color:#9fe0ff;font-size:.78rem;font-weight:900;margin-bottom:5px;}
   #startRecommend .recCard .rname{font-size:1.08rem;font-weight:900;margin-bottom:5px;}
   #startRecommend .recCard .rwhy{color:#7CFFB2;font-size:.78rem;line-height:1.35;min-height:38px;}
   #startRecommend .recCard .rcost{color:#ffd45d;font-weight:900;margin:8px 0;}
   #startRecommend .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:12px;}
   #startRecommend .skip{background:#2a2f3a;color:#d7e5f3;border:1px solid #4a5568;}
-  body.touch #liveRecCard{right:8px;top:auto;bottom:98px;transform:none;width:min(286px,62vw);padding:9px 10px;}
-  body.touch #liveRecCard.collapsed{width:52px;height:52px;padding:0;}
+  body.touch #liveRecCard{right:auto;top:auto;bottom:auto;transform:none;width:210px;max-width:52vw;padding:7px 8px;border-radius:12px;}
+  body.touch #liveRecCard.collapsed{right:auto;top:auto;width:52px;height:52px;padding:0;border-radius:50%;}
   body.touch #liveRecCard.collapsed:hover{transform:none;}
-  body.touch #liveRecCard .rname{font-size:1rem;}
-  body.touch #liveRecCard .rwhy{font-size:.72rem;}
+  body.touch #liveRecCard .rtitle{font-size:.68rem;margin-bottom:2px;}
+  body.touch #liveRecCard .rname{font-size:.88rem;margin-bottom:1px;}
+  body.touch #liveRecCard .rwhy{font-size:.64rem;line-height:1.18;margin-bottom:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
   body.touch #liveRecCard .rkey{display:none;}
+  body.touch #liveRecCard .rcost{font-size:.7rem;}
   body.touch #startRecommend{align-items:center;padding:8px;}
   body.touch #startRecommend .recBox{max-height:94vh;overflow-y:auto;padding:12px;}
   body.touch #startRecommend h2{font-size:1.05rem;}
@@ -494,41 +498,41 @@ const WEAPONS=[
   // 기본 무기
   // 기존 기본 무기 — 코드 보존, 구매 목록에선 숨김(hidden). 예비탄 유한화.
   {id:"ar",name:"돌격소총",cat:"basic",dmg:11, pen:0,delay:0.08,magSize:30,reload:1.8,bspd:1100,range:740, cost:300, hidden:true,reserveMax:180,
-    spreadBase:0.010,spreadMove:0.060,spreadShot:0.013,spreadMax:0.18,recoilV:6, recoilH:4, turn:7,color:"#e8e85a"},
+    spreadBase:0.010,spreadMove:0.060,spreadShot:0.013,spreadMax:0.18,recoilV:6, recoilH:4, turn:12,color:"#e8e85a"},
   {id:"smg",name:"기관단총",cat:"basic",dmg:9,pen:0,delay:0.05,magSize:28,reload:1.6,bspd:1000,range:470,cost:450,noFireSlow:true, hidden:true,reserveMax:196,
-    spreadBase:0.030,spreadMove:0.080,spreadShot:0.020,spreadMax:0.22,recoilV:5,recoilH:5,turn:12,color:"#f0d24a"},
+    spreadBase:0.030,spreadMove:0.080,spreadShot:0.020,spreadMax:0.22,recoilV:5,recoilH:5,turn:16,color:"#f0d24a"},
   {id:"sg",name:"샷건",    cat:"basic",dmg:7,  pen:0,delay:0.5, magSize:8, reload:2.2,bspd:900, range:440, cost:700, pellets:12,distSpread:true, hidden:true,reserveMax:48,
-    spreadBase:0.04, spreadMove:0.05, spreadShot:0.0, spreadMax:0.36,recoilV:16,recoilH:9, turn:9,color:"#ff9d3a"},
+    spreadBase:0.04, spreadMove:0.05, spreadShot:0.0, spreadMax:0.36,recoilV:16,recoilH:9, turn:13,color:"#ff9d3a"},
   {id:"sr",name:"저격총",  cat:"basic",dmg:120,pen:2,delay:1.4, magSize:10,reload:2.6,bspd:2600,range:1550,cost:1200, hidden:true,reserveMax:40,
-    spreadBase:0.0,  spreadMove:0.030,spreadShot:0.0,  spreadMax:0.05,recoilV:22,recoilH:3, turn:2,color:"#9fe0ff"},
+    spreadBase:0.0,  spreadMove:0.030,spreadShot:0.0,  spreadMax:0.05,recoilV:22,recoilH:3, turn:9,color:"#9fe0ff"},
   // 신규 기본 무기 — 제한적이지만 화력 무기의 약점(관통/대군중)을 보조
   {id:"dmr",name:"폭발형 DMR",cat:"basic",dmg:55,pen:2,delay:0.5,magSize:6,reserveMax:48,reload:2.4,bspd:1800,range:1100,cost:1000,splash:75,slowReload:true,
-    spreadBase:0.004,spreadMove:0.05,spreadShot:0.008,spreadMax:0.12,recoilV:18,recoilH:5,turn:2.5,color:"#ffb347"},   // 반자동 폭발 관통총(조작 둔함)
+    spreadBase:0.004,spreadMove:0.05,spreadShot:0.008,spreadMax:0.12,recoilV:18,recoilH:5,turn:9.5,color:"#ffb347"},   // 반자동 폭발 관통총(조작 둔함)
   {id:"iar",name:"소이 돌격소총",cat:"basic",dmg:8,pen:0,delay:0.085,magSize:30,reserveMax:240,reload:2.0,bspd:1100,range:700,cost:800,ignite:0.25,
-    spreadBase:0.012,spreadMove:0.065,spreadShot:0.014,spreadMax:0.19,recoilV:6,recoilH:4,turn:6,color:"#ff9a4a"},   // 25% 확률 점화(화상=장갑 무시)
+    spreadBase:0.012,spreadMove:0.065,spreadShot:0.014,spreadMax:0.19,recoilV:6,recoilH:4,turn:12,color:"#ff9a4a"},   // 25% 확률 점화(화상=장갑 무시)
   {id:"fsmg",name:"미니 화염방사기",cat:"basic",dmg:0,pen:3,delay:0.05,magSize:60,reserveMax:300,reload:2.2,bspd:0,range:130,cost:850,flame:true,coneHalf:0.46,flameDmg:60,burnT:3.5,
     spreadBase:0,spreadMove:0,spreadShot:0,spreadMax:0,recoilV:3,recoilH:2,turn:9,color:"#ff8a2e"},   // 근접 와이드 단거리 화염(기본 티어)   // 근접 초고연사·고확률 점화
   {id:"apr",name:"AP 리볼버",cat:"basic",dmg:45,pen:3,delay:0.55,magSize:6,reserveMax:48,reload:1.8,bspd:1400,range:700,cost:900,
-    spreadBase:0.006,spreadMove:0.04,spreadShot:0.01,spreadMax:0.10,recoilV:20,recoilH:6,turn:5,color:"#d9d2c4"},   // 단발 최고관통 — 비상 장갑 오프너
+    spreadBase:0.006,spreadMove:0.04,spreadShot:0.01,spreadMax:0.10,recoilV:20,recoilH:6,turn:11,color:"#d9d2c4"},   // 단발 최고관통 — 비상 장갑 오프너
   {id:"ksg",name:"충격 산탄총",cat:"basic",dmg:9,pen:0,delay:0.6,magSize:6,reserveMax:36,reload:2.2,bspd:1000,range:380,cost:750,pellets:6,distSpread:true,knock:60,
-    spreadBase:0.05,spreadMove:0.06,spreadShot:0.0,spreadMax:0.34,recoilV:18,recoilH:8,turn:8,color:"#9fd0ff"},   // 강한 넉백 군중제어
+    spreadBase:0.05,spreadMove:0.06,spreadShot:0.0,spreadMax:0.34,recoilV:18,recoilH:8,turn:12,color:"#9fd0ff"},   // 강한 넉백 군중제어
   {id:"nuke",name:"미니 핵폭탄",cat:"basic",dmg:1200,pen:3,delay:1.0,magSize:1,reserveMax:2,reload:4.0,bspd:700,range:900,cost:2500,splash:260,slowReload:true,
-    spreadBase:0.0,spreadMove:0.03,spreadShot:0.0,spreadMax:0.05,recoilV:30,recoilH:4,turn:1.6,color:"#bfe6ff"},   // 탄1발 일격필살(자기 피해 주의)
+    spreadBase:0.0,spreadMove:0.03,spreadShot:0.0,spreadMax:0.05,recoilV:30,recoilH:4,turn:9,color:"#bfe6ff"},   // 탄1발 일격필살(자기 피해 주의)
   // 화력(구매)
   {id:"lmg",name:"경기관총",cat:"power",dmg:8, pen:1,delay:0.035,magSize:200,reserveMax:400,reload:2.0,bspd:1150,range:700, cost:650,
-    spreadBase:0.045,spreadMove:0.085,spreadShot:0.012,spreadMax:0.24,recoilV:4, recoilH:6, turn:8,  color:"#ffd05a"},
+    spreadBase:0.045,spreadMove:0.085,spreadShot:0.012,spreadMax:0.24,recoilV:4, recoilH:6, turn:11,  color:"#ffd05a"},
   {id:"mg",name:"중기관총",cat:"power",dmg:11, pen:2,delay:0.05,magSize:75,reserveMax:225,reload:2.4,bspd:1150,range:800, cost:900,slowReload:true,
-    spreadBase:0.018,spreadMove:0.17,spreadShot:0.010,spreadMax:0.24,recoilV:5, recoilH:5, turn:3.5,color:"#ff6a3a"},
+    spreadBase:0.018,spreadMove:0.17,spreadShot:0.010,spreadMax:0.24,recoilV:5, recoilH:5, turn:9.5,color:"#ff6a3a"},
   {id:"gl",name:"유탄발사기",cat:"power",dmg:92,pen:1,delay:0.38, magSize:6, reserveMax:18, reload:2.6,bspd:600, range:920, cost:1100,splash:110,lob:true,bounce:true,slowReload:true,
-    spreadBase:0.020,spreadMove:0.040,spreadShot:0.010,spreadMax:0.10,recoilV:11,recoilH:4, turn:2.8,color:"#ff3a3a"},
+    spreadBase:0.020,spreadMove:0.040,spreadShot:0.010,spreadMax:0.10,recoilV:11,recoilH:4, turn:9,color:"#ff3a3a"},
   {id:"at",name:"대전차 미사일",cat:"power",dmg:430,pen:3,delay:0.8,magSize:1,reserveMax:0,reload:99,bspd:1000,range:1400,cost:1400,splash:85,oneshot:true,bounce:true,
-    spreadBase:0,spreadMove:0.02,spreadShot:0,spreadMax:0.03,recoilV:20,recoilH:3,turn:2,color:"#ff5a3a"},
+    spreadBase:0,spreadMove:0.02,spreadShot:0,spreadMax:0.03,recoilV:20,recoilH:3,turn:9,color:"#ff5a3a"},
   {id:"atc",name:"대전차포",cat:"power",dmg:130,pen:2,delay:0.18,magSize:5,reserveMax:20,reload:2.0,bspd:1450,range:1150,cost:1500,bounce:true,slowReload:true,
-    spreadBase:0.012,spreadMove:0.12,spreadShot:0.07,spreadMax:0.42,recoilV:44,recoilH:18,turn:1.8,color:"#ff8a3a"},
+    spreadBase:0.012,spreadMove:0.12,spreadShot:0.07,spreadMax:0.42,recoilV:44,recoilH:18,turn:9,color:"#ff8a3a"},
   {id:"fl",name:"화염방사기",cat:"power",dmg:0,pen:3,delay:0.05,magSize:100,reserveMax:300,reload:2.5,bspd:0,range:280,cost:900,flame:true,coneHalf:0.26,
-    spreadBase:0,spreadMove:0,spreadShot:0,spreadMax:0,recoilV:3,recoilH:2,turn:5,color:"#ff7a2e"},
+    spreadBase:0,spreadMove:0,spreadShot:0,spreadMax:0,recoilV:3,recoilH:2,turn:10,color:"#ff7a2e"},
   {id:"rg",name:"레이저건",cat:"power",dmg:0,pen:3,delay:0.2, magSize:3, reserveMax:9,  reload:2.8,bspd:0,range:1700,cost:1700,charge:true,laser:true,slowReload:true,
-    spreadBase:0,spreadMove:0,spreadShot:0,spreadMax:0,recoilV:14,recoilH:1, turn:1.8,color:"#7fd0ff"},
+    spreadBase:0,spreadMove:0,spreadShot:0,spreadMax:0,recoilV:14,recoilH:1, turn:9,color:"#7fd0ff"},
 ];
 const BASIC_IDS=["dmr","iar","fsmg","apr","ksg","nuke"], POWER_IDS=["lmg","mg","gl","at","atc","fl","rg"];   // 구매 목록(숨긴 구형 기본무기 제외)
 function widx(id){ return WEAPONS.findIndex(w=>w.id===id); }
@@ -825,26 +829,51 @@ function startRecommendations(){
   return [basic,power,dr].filter(Boolean);
 }
 function recCardHTML(r,i){
-  return `<div class="recCard" data-i="${i}"><div class="rtype">${recTypeLabel(r)}</div><div class="rname">${recName(r)}</div><div class="rwhy">${r.why||"현재 작전에 적합합니다."}</div><div class="rcost">${recommendationCost(r)} C</div><button>바로 주문</button></div>`;
+  const bought=isRecOwned(r), cant=!isRecBuyable(r);
+  return `<div class="recCard${bought?" bought":""}" data-i="${i}"><div class="rtype">${recTypeLabel(r)}</div><div class="rname">${recName(r)}</div><div class="rwhy">${r.why||"현재 작전에 적합합니다."}</div><div class="rcost">${recommendationCost(r)} C</div><button ${bought||cant?"disabled":""}>${bought?"주문 완료":"바로 주문"}</button></div>`;
 }
 function showStartRecommendations(){
   const recs=startRecommendations(); if(!recs.length) return;
   startRecGrid.innerHTML=recs.map(recCardHTML).join(""); startRecommend.classList.remove("hidden"); startRecOpen=true; startRecommend._recs=recs;
   startRecDesc.textContent=`${operationMeta.icon} ${operationMeta.name} — 이번 작전 추천 배송입니다. 이미 보유한 장비는 제외했습니다.`;
 }
-function closeStartRecommendations(){ startRecOpen=false; startRecommend.classList.add("hidden"); }
+function closeStartRecommendations(){ startRecOpen=false; startRecommend.classList.add("hidden"); startRecommend._recs=[]; }
 function showLiveRecommendation(r){
   r=normalizeLiveRec(r); if(!isRecBuyable(r)||isRecOwned(r)) return; liveRec=r; liveRecTimer=REC_LOCK_TIME; liveRecPeek=REC_PEEK_TIME;
   liveRecName.textContent=recName(r); liveRecWhy.textContent=r.why||"현재 전황에 적합합니다."; liveRecCost.textContent=`${recommendationCost(r)} C`;
   liveRecCard.classList.remove("hidden","collapsed");
+  syncLiveRecommendationLayout();
   recCooldowns[recKey(r)]=REC_REPEAT_CD;
 }
 function buyLiveRecommendation(){ if(!liveRec) return; const ok=buyRecommendation(liveRec); if(ok){ liveRecTimer=0; liveRecPeek=0; liveRec=null; liveRecCard.classList.add("hidden"); liveRecCard.classList.remove("collapsed"); } }
+function syncLiveRecommendationLayout(){
+  if(!isTouch || liveRecCard.classList.contains("hidden")){
+    liveRecCard.style.left=""; liveRecCard.style.top=""; liveRecCard.style.width="";
+    return;
+  }
+  const r=canvas.getBoundingClientRect();
+  const u=Math.max(30,Math.min(44,Math.min(W,H)*0.062));
+  const g=u*2.35, te=u*0.95;
+  const recX=W-te-g*2, recY=te;   // 우상단 버튼 순서: 📦추천 · 🛒구매 · 🗺️지도
+  if(liveRecCard.classList.contains("collapsed")){
+    liveRecCard.style.width="52px";
+    liveRecCard.style.left=Math.round(r.left+recX-26)+"px";
+    liveRecCard.style.top=Math.round(r.top+recY-26)+"px";
+  }else{
+    const cw=Math.min(198,Math.max(158,W*0.40));
+    // 추천 카드는 버튼 아래가 아니라 캔버스 오른쪽 상단에 딱 붙인다.
+    // 버튼들과 같은 캔버스 좌표계를 사용하므로 화면비/해상도 변화에도 흔들리지 않는다.
+    liveRecCard.style.width=Math.round(cw)+"px";
+    liveRecCard.style.left=Math.round(r.left+W-cw-6)+"px";
+    liveRecCard.style.top=Math.round(r.top+6)+"px";
+  }
+}
 function updateRecommendationUI(dt){
   if(liveRecTimer>0){ liveRecTimer-=dt; liveRecPeek-=dt;
     if(liveRecPeek<=0) liveRecCard.classList.add("collapsed");
     if(liveRecTimer<=0){ liveRec=null; liveRecCard.classList.add("hidden"); liveRecCard.classList.remove("collapsed"); }
   }
+  syncLiveRecommendationLayout();
 }
 function operationBriefingHTML(){
   const m=operationMeta||chooseOperationMeta(), t=m.threat||{};
@@ -1121,12 +1150,12 @@ canvas.addEventListener("pointerdown",e=>{ if(e.pointerType==="mouse" && !isTouc
   e.preventDefault(); },{passive:false});
 function btnHit(b,px,py){ return b.rect ? (Math.abs(px-b.x)<b.w/2 && Math.abs(py-b.y)<b.h/2) : (Math.hypot(px-b.x,py-b.y)<b.r); }
 function mobBtns(){ const u=Math.max(30,Math.min(44,Math.min(W,H)*0.062));
-  const g=u*2.4, te=u*0.95;                        // 상단 모서리 밀착
+  const g=u*2.35, te=u*0.95;                        // 우상단: 📦추천(좌, DOM) · 🛒구매(중) · 🗺️지도(우)
   const sw=u*2.0, sh=u*1.15, ssp=sw+6, sy=H-sh*0.62, sx=W/2-ssp;   // 무기 슬롯(정보 통합)
   const list=[
     {id:"pause", x:te,       y:te, r:u*0.7, ic:"⏸",  on:()=>pause()},
-    {id:"buy",   x:W-te,     y:te, r:u*0.7, ic:"🛒", on:()=>toggleBuy()},
-    {id:"map",   x:W-te-g,   y:te, r:u*0.7, ic:"🗺️", on:()=>{}},
+    {id:"buy",   x:W-te-g,   y:te, r:u*0.7, ic:"🛒", on:()=>toggleBuy()},
+    {id:"map",   x:W-te,     y:te, r:u*0.7, ic:"🗺️", on:()=>{}},
     {id:"reload",x:W-u*1.4,  y:H-u*1.4,   r:u, ic:"⟳",  on:()=>{const w=activeGun(); if(w) startReload(w);}},
     {id:"slide", x:W-u*1.4-g,y:H-u*1.4,   r:u, ic:"💨", on:()=>startSlide()},
     {id:"s1", rect:true, x:sx,       y:sy, w:sw, h:sh, slot:0, on:()=>{heldBeacon=-1; setSlot(0);}},
@@ -1134,7 +1163,7 @@ function mobBtns(){ const u=Math.max(30,Math.min(44,Math.min(W,H)*0.062));
     {id:"s3", rect:true, x:sx+ssp*2, y:sy, w:sw, h:sh, slot:2, on:()=>{ if(activeSlot!==2){ heldBeacon=-1; setSlot(2); slots[2].ti=0; } }},
     {id:"medkit", x:sx+ssp*2 + sw/2 + u*1.0, y:sy, r:u*0.92, ic:"💉", med:true, on:()=>startHeal()},
   ];
-  if(liveRec) list.push({id:"rec", x:W-u*1.5-g, y:H*0.5, r:u*1.0, ic:"📦", hot:true, on:()=>buyLiveRecommendation()});
+  // 추천 배송은 DOM 카드의 접힌 📦 아이콘 자체를 주문 버튼으로 사용한다. 펼침 카드도 버튼 위 레이어에 작게 오버레이된다.
   if(Math.hypot(player.x-EXIT.x,player.y-EXIT.y) < (EXIT.r||60)+90)   // 탈출 지점 진입 시에만 우중앙에 탈출 버튼
     list.push({id:"extract", x:W-u*1.5, y:H*0.5, r:u*1.05, ic:"🚀", hot:true, on:()=>callRocket()});
   return list;
@@ -1279,8 +1308,19 @@ buyList.addEventListener("pointerup",e=>{
 document.getElementById("buyBack").addEventListener("pointerup",e=>{ e.preventDefault(); buyStage="main"; renderBuy(); });
 document.getElementById("buyClose").addEventListener("pointerup",e=>{ e.preventDefault(); toggleBuy(); });
 liveRecBuy.addEventListener("pointerup",e=>{ e.preventDefault(); buyLiveRecommendation(); });
+liveRecCard.addEventListener("pointerup",e=>{ if(liveRecCard.classList.contains("collapsed")){ e.preventDefault(); buyLiveRecommendation(); } });
 startRecClose.addEventListener("pointerup",e=>{ e.preventDefault(); closeStartRecommendations(); });
-startRecGrid.addEventListener("pointerup",e=>{ const card=e.target.closest(".recCard"); if(!card) return; e.preventDefault(); const r=startRecommend._recs&&startRecommend._recs[Number(card.dataset.i)]; if(r) buyRecommendation(r); });
+startRecGrid.addEventListener("pointerup",e=>{
+  const card=e.target.closest(".recCard"); if(!card||card.classList.contains("bought")) return; e.preventDefault();
+  const idx=Number(card.dataset.i);
+  const r=startRecommend._recs&&startRecommend._recs[idx];
+  if(r && buyRecommendation(r)){
+    // 최초 추천 화면은 구매 후 다른 추천으로 교체하지 않는다. 산 항목만 제거하고 남은 추천만 유지한다.
+    startRecommend._recs.splice(idx,1);
+    if(!startRecommend._recs.length){ closeStartRecommendations(); return; }
+    startRecGrid.innerHTML=startRecommend._recs.map(recCardHTML).join("");
+  }
+});
 function renderBuy(){
   buyCredits.textContent=Math.floor(player.credits);
   if(buyStage==="main"){
