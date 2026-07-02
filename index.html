@@ -668,10 +668,10 @@ function initAllWeapons(){ WEAPONS.forEach(initWeapon); }
 //---------------- 투척/설치 장비(슬롯3) ----------------
 //  마지막 항목 '자동 포탑'은 1/2/3 으로 종류를 고른다.
 const TURRET_VARIANTS=[
-  {name:"기관총 포탑", pen:1, fireDelay:0.06, range:380, dmg:8,            cost:500,  color:"#ff6a3a"},        // 스트라잼 중기관총급
-  {name:"로켓 포탑",   pen:3, fireDelay:0.5,  range:560, dmg:120,splash:42, cost:1200, color:"#ff3a3a"},        // 대전차 관통·미사일(거의 단일표적)
-  {name:"화염 포탑",   pen:3, fireDelay:0.1,  range:180, cone:0.32, burn:5, cost:900,  color:"#ff9d2e", flame:true}, // 단거리 원뿔·화상
-  {name:"박격포 포탑", pen:2, fireDelay:2.4,  range:1500,dmg:55, splash:130, cost:1400, color:"#a0d048", mortar:true}, // 초장거리 곡사(느려서 이동표적 빗나감)
+  {name:"기관총 포탑", pen:1, fireDelay:0.018, range:380, dmg:2.4,          cost:500,  color:"#ff6a3a", minigun:true}, // 미니건식 초고속 연사. DPS는 기존과 동일(8/0.06 = 2.4/0.018)
+  {name:"로켓 포탑",   pen:3, fireDelay:0.5,   range:560, dmg:30, splash:36, cost:1200, color:"#ff3a3a", rocketBurst:4, burstInterval:0.055, burstSpread:34}, // 다련장 로켓. 실제 로켓 투사체/연기/후폭풍 연출. 4발 합산 피해는 기존 120 유지
+  {name:"화염 포탑",   pen:3, fireDelay:0.1,   range:180, cone:0.32, burn:5, cost:900,  color:"#ff9d2e", flame:true}, // 화염방사기식 원뿔 화염 + 잔불
+  {name:"박격포 포탑", pen:2, fireDelay:2.4,   range:820, dmg:18.4, splash:130, cost:1400, color:"#a0d048", mortar:true, totCount:3, totSpread:44}, // 하늘을 향한 박격포 외형 + TOT 3발. 3발 합산 피해는 기존 55 수준 유지
   {name:"지뢰 살포 포탑", deploy:"mine",   count:8, radius:240, cost:1000, color:"#caa23b"},   // 설치 시 주변에 지뢰 자동 매설
   {name:"보급 포탑",     deploy:"supply", count:6, radius:200, cost:1100, color:"#5dff9b"},   // 설치 시 주변에 보급품 살포
 ];
@@ -1579,7 +1579,7 @@ function renderBuy(){
       `<div class="item" data-stage="power"><span><span class="key">1</span><span class="name">화력 구매</span></span><span class="spec">중기관총 · 유탄 · 레이저건</span><span class="cost">▶</span></div>`+
       `<div class="item" data-stage="air"><span><span class="key">2</span><span class="name">전투기 폭격 (신호기)</span></span><span class="spec">기총소사 · 융단폭격 · 전술핵</span><span class="cost">▶</span></div>`+
       `<div class="item" data-stage="bomb"><span><span class="key">3</span><span class="name">폭격 (신호기)</span></span><span class="spec">고폭탄 · 신의 지팡이 · 네이팜</span><span class="cost">▶</span></div>`+
-      `<div class="item" data-stage="turret"><span><span class="key">4</span><span class="name">포탑 (설치)</span></span><span class="spec">기관총 · 로켓 · 화염</span><span class="cost">▶</span></div>`+
+      `<div class="item" data-stage="turret"><span><span class="key">4</span><span class="name">포탑 (설치)</span></span><span class="spec">기관총 · 로켓 · 화염 · 박격포 · 지뢰 · 보급</span><span class="cost">▶</span></div>`+
       `<div class="item" data-stage="drone"><span><span class="key">5</span><span class="name">드론 (동반 유닛)</span></span><span class="spec">기관총 · 화염 · 레이저 · 보호막 · 요격</span><span class="cost">▶</span></div>`+
       `<div class="item" data-stage="basic"><span><span class="key">6</span><span class="name">기본 무기 구매</span></span><span class="spec">폭발형 DMR · 소이 AR · AP 리볼버</span><span class="cost">▶</span></div>`;
   } else if(buyStage==="drone"){
@@ -1612,7 +1612,7 @@ function renderBuy(){
     buySub.textContent="구매 시 해당 포탑 충전 보급 + 슬롯3 장착. [Backspace] 뒤로";
     buyList.innerHTML=TURRET_VARIANTS.map((v,i)=>{
       const cant=player.credits<v.cost?"cant":"";
-      const spec=v.deploy==="mine"?`지뢰 ${v.count}발 자동 매설 · 반경 ${v.radius}`:(v.deploy==="supply"?`보급품 ${v.count}개 살포`:(v.flame?`단거리 원뿔·화상 · ${armorLabelHTML(v.pen)}`:(v.splash?`미사일 광역 · ${armorLabelHTML(v.pen)}`:`자동 사격 · ${armorLabelHTML(v.pen)}`)));
+      const spec=v.deploy==="mine"?`지뢰 ${v.count}발 자동 매설 · 반경 ${v.radius}`:(v.deploy==="supply"?`보급품 ${v.count}개 살포`:(v.flame?`화염방사 · 잔불 장판 · ${armorLabelHTML(v.pen)}`:(v.mortar?`하늘향 박격포 · LOS 무시 TOT 3발 · ${armorLabelHTML(v.pen)}`:(v.rocketBurst?`포물선 다련장 로켓 · 꼬리 연기 · ${armorLabelHTML(v.pen)}`:(v.splash?`미사일 광역 · ${armorLabelHTML(v.pen)}`:`초고속 미니건 · 탄피 배출 · ${armorLabelHTML(v.pen)}`)))));
       return `<div class="item ${cant}${itemRecClass("turret",i)}"><span><span class="key">${i+1}</span><span class="name">${v.name}${recHtml("turret",i)}</span></span>
               <span class="spec">${spec}</span><span class="cost">${v.cost} C</span></div>`;
     }).join("");
@@ -1978,7 +1978,8 @@ function useTactical(){
     const v=TURRET_VARIANTS[turretVariant];
     turrets.push({x:player.x+Math.cos(player.aim)*34,y:player.y+Math.sin(player.aim)*34,ang:player.aim,life:t.life,cd:0,active:false,
       variant:turretVariant,fireDelay:v.fireDelay,dmg:v.dmg,pen:v.pen,range:v.range,splash:v.splash||0,
-      flame:v.flame||false,coneHalf:v.cone||0,burn:v.burn||0,color:v.color});
+      flame:v.flame||false,mortar:v.mortar||false,coneHalf:v.cone||0,burn:v.burn||0,color:v.color,hp:120,maxhp:120,
+      minigun:v.minigun||false,rocketBurst:v.rocketBurst||0,burstInterval:v.burstInterval||0,burstSpread:v.burstSpread||0,burstLeft:0,burstCD:0,burstTarget:null,totCount:v.totCount||0,totSpread:v.totSpread||0,spin:0,muzzle:0});
     pushLog(`🛡️ ${v.name} 설치!`,v.color); toast(`🛡️ ${v.name} 설치!`);
   }
 }
@@ -1997,7 +1998,8 @@ function deployTurretAt(x,y,v){
     turrets.push({x,y,ang:0,life:5,cd:0,active:false,variant:v,deploy:vv.deploy,count:vv.count,radius:vv.radius,launched:0,launchCD:0.25,color:vv.color,hp:120,maxhp:120});
     pushLog(`📦 ${vv.name} 전개 — ${vv.deploy==="mine"?"지뢰":"보급품"} 살포!`,vv.color); toast(`📦 ${vv.name}!`); return;
   }
-  turrets.push({x,y,ang:0,life:18,cd:0,active:false,variant:v,fireDelay:vv.fireDelay,dmg:vv.dmg,pen:vv.pen,range:vv.range,splash:vv.splash||0,flame:vv.flame||false,mortar:vv.mortar||false,coneHalf:vv.cone||0,burn:vv.burn||0,color:vv.color,hp:120,maxhp:120});
+  turrets.push({x,y,ang:0,life:18,cd:0,active:false,variant:v,fireDelay:vv.fireDelay,dmg:vv.dmg,pen:vv.pen,range:vv.range,splash:vv.splash||0,flame:vv.flame||false,mortar:vv.mortar||false,coneHalf:vv.cone||0,burn:vv.burn||0,color:vv.color,hp:120,maxhp:120,
+    minigun:vv.minigun||false,rocketBurst:vv.rocketBurst||0,burstInterval:vv.burstInterval||0,burstSpread:vv.burstSpread||0,burstLeft:0,burstCD:0,burstTarget:null,totCount:vv.totCount||0,totSpread:vv.totSpread||0,spin:0,muzzle:0});
   pushLog(`🛡️ ${vv.name} 전개!`,vv.color); toast(`🛡️ ${vv.name} 전개!`);
 }
 function launchScatter(tr){   // 포탑에서 랜덤 지점으로 투하물 사출
@@ -3010,10 +3012,66 @@ function drawBooms(){ for(const b of booms){ const p=b.t/b.dur; const cr=Math.ma
   ctx.globalAlpha=Math.max(0,0.85*(1-p)); ctx.strokeStyle="#ffe2a0"; ctx.lineWidth=5; ctx.beginPath(); ctx.arc(b.x,b.y,Math.max(0.5,b.r*(0.4+p*1.0)),0,7); ctx.stroke(); ctx.restore(); } }
 
 //---------------- 투척/설치 업데이트 ----------------
+function turretCanSeeTarget(tr,e){
+  if(tr.mortar) return true;   // 박격포는 곡사 무기라 엄폐물/연막 LOS를 무시한다.
+  return !coverBetween(tr.x,tr.y,e.x,e.y);
+}
+function rocketLaunchSmoke(x,y,ang){
+  // 로켓 발사 후폭풍: 발사 방향 반대편으로 연기와 화염이 분사된다.
+  for(let i=0;i<10;i++){
+    const a=ang+Math.PI+(Math.random()-0.5)*0.9, sp=80+Math.random()*190;
+    particles.push({x:x-Math.cos(ang)*12,y:y-Math.sin(ang)*12,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:0.32+Math.random()*0.22,max:0.54,r:4+Math.random()*5,color:Math.random()<0.35?"#ff9a2e":"#9aa6b0",kind:"blood"});
+  }
+}
+function turretMinigunShotFX(tr){
+  // 기관총 포탑: 유저 총기 머즐 감각을 참고한 총구 스파크 + 측면 탄피 배출.
+  const a=tr.ang, mx=tr.x+Math.cos(a)*28, my=tr.y+Math.sin(a)*28;
+  for(let i=0;i<2;i++){
+    const fa=a+(Math.random()-0.5)*0.46, sp=220+Math.random()*160;
+    particles.push({x:mx,y:my,vx:Math.cos(fa)*sp,vy:Math.sin(fa)*sp,life:0.11,max:0.11,r:2.2+Math.random()*1.4,color:i===0?"#fff2b0":"#ffb02e",kind:"spark"});
+  }
+  // 오른쪽 배출구에서 탄피가 옆/뒤로 튀며 떨어지는 느낌.
+  for(let i=0;i<2;i++){
+    const side=a+(Math.random()<0.5?1:-1)*(1.35+Math.random()*0.38), sp=120+Math.random()*150;
+    particles.push({x:tr.x+Math.cos(a)*6+Math.cos(a+Math.PI/2)*5,y:tr.y+Math.sin(a)*6+Math.sin(a+Math.PI/2)*5,vx:Math.cos(side)*sp,vy:Math.sin(side)*sp,life:0.50+Math.random()*0.22,max:0.72,r:2.0+Math.random()*1.2,color:"#d9b24a",kind:"spark"});
+  }
+}
+function fireRocketBurstRound(tr){
+  const t=tr.burstTarget; if(!t) return;
+  const a=Math.random()*Math.PI*2, spread=(tr.burstSpread||0)*Math.random();
+  const tx=t.x+Math.cos(a)*spread, ty=t.y+Math.sin(a)*spread;
+  const ang=Math.atan2(ty-tr.y,tx-tr.x);
+  const sx=tr.x+Math.cos(ang)*24, sy=tr.y+Math.sin(ang)*24;
+  missiles.push({x:sx,y:sy,sx,sy,tx,ty,spd:540,dmg:tr.dmg,pen:tr.pen,radius:tr.splash,volley:true,rocketVisual:true,arcH:58+Math.random()*22,smokeT:0,color:tr.color});
+  rocketLaunchSmoke(sx,sy,ang);
+  tr.muzzle=0.12; tr.backblast=0.18; sfx("rocket");
+}
+function fireMortarTOT(tr,target){
+  const baseDur=Math.max(1.05,Math.hypot(target.x-tr.x,target.y-tr.y)/620), n=tr.totCount||3;
+  for(let i=0;i<n;i++){
+    const a=i===0?0:(Math.random()*Math.PI*2), d=i===0?0:(12+Math.random()*(tr.totSpread||44));
+    grenades.push({sx:tr.x,sy:tr.y,x:tr.x,y:tr.y,tx:target.x+Math.cos(a)*d,ty:target.y+Math.sin(a)*d,t:-i*0.08,dur:baseDur,z:0,dmg:tr.dmg,radius:tr.splash,pen:tr.pen,color:tr.color,tot:true});
+  }
+  tr.muzzle=0.12; popText(target.x,target.y-tr.splash*0.55,"TOT!",tr.color);
+}
+function turretFlameFX(tr,dt){
+  // 화염방사기 구현과 동일하게 화염 입자 + 바닥 잔불을 남긴다. 피해량 자체는 기존 burn 로직 유지.
+  tr.flameGroundCD=(tr.flameGroundCD||0)-dt;
+  if(tr.flameGroundCD<=0){
+    tr.flameGroundCD=0.12;
+    const fd=tr.range*(0.45+Math.random()*0.48), fan=tr.ang+(Math.random()-0.5)*tr.coneHalf*1.7;
+    spawnGroundFire(tr.x+Math.cos(fan)*fd,tr.y+Math.sin(fan)*fd,18+Math.random()*10,2.0+Math.random()*1.0,"turret");
+  }
+  for(let i=0;i<4;i++){
+    const an=tr.ang+(Math.random()-0.5)*tr.coneHalf*2, sp=220+Math.random()*260;
+    particles.push({x:tr.x+Math.cos(tr.ang)*22,y:tr.y+Math.sin(tr.ang)*22,vx:Math.cos(an)*sp,vy:Math.sin(an)*sp,life:0.20+Math.random()*0.16,max:0.36,r:5+Math.random()*6,color:Math.random()<0.5?"#ff7a1a":"#ffc23a",kind:"blood"});
+  }
+  if((tr.flameSnd||0)<=0){ tr.flameSnd=0.14; sfx("flame"); }
+}
 function updateTacticals(dt){
   if(throwCD>0) throwCD-=dt;
   for(const t of TACTICALS){ if(t.charges<t.max){ t.rt+=dt; if(t.rt>=t.regen){ t.rt=0; t.charges++; } } }
-  for(const g of grenades){ g.t+=dt; const p=Math.min(1,g.t/g.dur);
+  for(const g of grenades){ g.t+=dt; if(g.t<0) continue; const p=Math.min(1,g.t/g.dur);
     g.x=g.sx+(g.tx-g.sx)*p; g.y=g.sy+(g.ty-g.sy)*p; g.z=Math.sin(p*Math.PI)*70;
     if(p>=1 && g.enemy && !g.landed){ g.landed=true; g.x=g.tx; g.y=g.ty; g.z=0; g.t=0; }
     if(g.enemy && g.landed && !g.exploded){ g.armedT-=dt; g.blink+=dt*(g.armedT<0.7?9:5); if(g.armedT<=0){ g.exploded=true; } }
@@ -3027,20 +3085,26 @@ function updateTacticals(dt){
   for(const tr of turrets){ tr.life-=dt; if(tr.life<=0||tr.hp<=0) continue; tr.cd-=dt;
     if(tr.deploy){ tr.launchCD-=dt; if(tr.launched<tr.count && tr.launchCD<=0){ tr.launchCD=0.16; launchScatter(tr); tr.launched++; } continue; }   // 살포형: 사격 안 함
     for(const e of enemies){ if(e.alive && Math.hypot(e.x-tr.x,e.y-tr.y)<e.r+18){ tr.hp-=e.type.melee*0.9*dt+8*dt; } }   // 근접 적이 포탑 파괴
+    if(tr.spin!=null) tr.spin+=(tr.active?18:5)*dt;
+    if(tr.muzzle>0) tr.muzzle-=dt;
+    if(tr.backblast>0) tr.backblast-=dt;
+    if(tr.flameSnd>0) tr.flameSnd-=dt;
+    if(tr.burstLeft>0){ tr.burstCD-=dt; if(tr.burstCD<=0){ fireRocketBurstRound(tr); tr.burstLeft--; tr.burstCD=tr.burstInterval||0.06; } }
     let best=null,bd=tr.range;
-    for(const e of enemies){ if(!e.alive) continue; const d=Math.hypot(e.x-tr.x,e.y-tr.y); if(d<bd && !coverBetween(tr.x,tr.y,e.x,e.y)){ best=e; bd=d; } }
+    for(const e of enemies){ if(!e.alive) continue; const d=Math.hypot(e.x-tr.x,e.y-tr.y); if(d<bd && turretCanSeeTarget(tr,e)){ best=e; bd=d; } }
     tr.active=!!best;
     if(best){ tr.ang=Math.atan2(best.y-tr.y,best.x-tr.x);
-      if(tr.flame){  // 화염: 전방 원뿔 내 모든 적에게 화상
+      if(tr.flame){  // 화염: 전방 원뿔 내 모든 적에게 화상 + 화염방사/잔불 연출
+        turretFlameFX(tr,dt);
         for(const e of enemies){ if(!e.alive) continue; const d=Math.hypot(e.x-tr.x,e.y-tr.y); if(d>tr.range) continue;
           let ang=Math.atan2(e.y-tr.y,e.x-tr.x)-tr.ang; while(ang>Math.PI)ang-=2*Math.PI; while(ang<-Math.PI)ang+=2*Math.PI;
           if(Math.abs(ang)<=tr.coneHalf){ e.burn=tr.burn; e.aggro=true; } }
-      } else if(tr.mortar){  // 박격포: 표적 현재 위치로 곡사(비행 길어 이동표적 빗나감)
-        if(tr.cd<=0){ tr.cd=tr.fireDelay; const dd=Math.hypot(best.x-tr.x,best.y-tr.y);
-          grenades.push({sx:tr.x,sy:tr.y,x:tr.x,y:tr.y,tx:best.x,ty:best.y,t:0,dur:Math.max(1.5,dd/620),z:0,dmg:tr.dmg,radius:tr.splash,pen:tr.pen,color:tr.color}); }
-      } else if(tr.cd<=0){ tr.cd=tr.fireDelay;
-        if(tr.splash>0) missiles.push({x:tr.x,y:tr.y,tx:best.x,ty:best.y,spd:540,dmg:tr.dmg,pen:tr.pen,radius:tr.splash});
-        else bullets.push({x:tr.x,y:tr.y,vx:Math.cos(tr.ang)*950,vy:Math.sin(tr.ang)*950,dmg:tr.dmg,pen:tr.pen,splash:0,pierce:false,life:1,fromPlayer:true,color:tr.color,armorPen:tr.pen,armorColor:armorColor(tr.pen),hits:[]});
+      } else if(tr.mortar){  // 박격포: 화면권 내 표적을 LOS 무시 TOT 3발로 곡사 지원
+        if(tr.cd<=0){ tr.cd=tr.fireDelay; fireMortarTOT(tr,best); }
+      } else if(tr.cd<=0 && tr.burstLeft<=0){ tr.cd=tr.fireDelay;
+        if(tr.rocketBurst>0){ tr.burstLeft=tr.rocketBurst; tr.burstTarget={x:best.x,y:best.y}; tr.burstCD=0; }
+        else if(tr.splash>0) missiles.push({x:tr.x,y:tr.y,tx:best.x,ty:best.y,spd:540,dmg:tr.dmg,pen:tr.pen,radius:tr.splash});
+        else { bullets.push({x:tr.x+Math.cos(tr.ang)*18,y:tr.y+Math.sin(tr.ang)*18,vx:Math.cos(tr.ang)*950,vy:Math.sin(tr.ang)*950,dmg:tr.dmg,pen:tr.pen,splash:0,pierce:false,life:1,fromPlayer:true,color:tr.color,armorPen:tr.pen,armorColor:armorColor(tr.pen),hits:[]}); tr.muzzle=0.045; if(tr.minigun) turretMinigunShotFX(tr); }
       } }
   }
   for(const tr of turrets){ if(tr.hp<=0 && !tr.dead){ tr.dead=true; boomFx(tr.x,tr.y,40); } }
@@ -3048,6 +3112,17 @@ function updateTacticals(dt){
   // 로켓 포탑 미사일: 조준 위치로 날아가 원형 광역 폭발
   for(const m of missiles){ const dx=m.tx-m.x,dy=m.ty-m.y,d=Math.hypot(dx,dy);
     if(d<12) m.boom=true; else { m.x+=dx/d*m.spd*dt; m.y+=dy/d*m.spd*dt; }
+    if(m.rocketVisual){
+      const total=Math.max(1,Math.hypot(m.tx-m.sx,m.ty-m.sy));
+      m.progress=Math.max(0,Math.min(1,1-Math.hypot(m.tx-m.x,m.ty-m.y)/total));
+      m.smokeT=(m.smokeT||0)-dt;
+      if(m.smokeT<=0){
+        m.smokeT=0.022; const ang=Math.atan2(m.ty-m.y,m.tx-m.x), p=m.progress||0, z=Math.sin(p*Math.PI)*(m.arcH||60);
+        const tailX=m.x-Math.cos(ang)*20, tailY=m.y-Math.sin(ang)*20-z;
+        particles.push({x:tailX,y:tailY,vx:-Math.cos(ang)*(35+Math.random()*70)+(Math.random()-0.5)*24,vy:-Math.sin(ang)*(35+Math.random()*70)+(Math.random()-0.5)*24,life:0.48,max:0.48,r:4+Math.random()*5.5,color:"rgba(150,155,150,.66)",kind:"blood"});
+        if(Math.random()<0.55) particles.push({x:tailX+Math.random()*3-1.5,y:tailY+Math.random()*3-1.5,vx:-Math.cos(ang)*(80+Math.random()*80),vy:-Math.sin(ang)*(80+Math.random()*80),life:0.12,max:0.12,r:3+Math.random()*3,color:"#ff9a2e",kind:"spark"});
+      }
+    }
     if(m.boom){ craters.push({x:m.x,y:m.y,t:0.5,r:m.radius}); sfx("boom"); boomFx(m.x,m.y,m.radius);
       aoeBlast(m.x,m.y,m.radius,m.dmg,m.pen);
       damageDepotsAt(m.x,m.y,m.radius,m.dmg); damageCoversAt(m.x,m.y,m.radius,m.dmg);
@@ -3443,7 +3518,7 @@ function render(){
     ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.x-b.vx*0.022,b.y-b.vy*0.022); ctx.stroke();
     ctx.globalAlpha=0.45; ctx.fillStyle=b.color; ctx.beginPath(); ctx.arc(b.x,b.y,b.fromPlayer?5:6,0,7); ctx.fill();
     ctx.globalAlpha=1; ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(b.x,b.y,b.fromPlayer?2.4:3,0,7); ctx.fill();
-    if(b.fromPlayer && b.armorColor){ ctx.globalAlpha=0.95; ctx.strokeStyle=b.armorColor; ctx.lineWidth=(b.armorPen>=3?2.2:1.5); ctx.beginPath(); ctx.arc(b.x,b.y,b.armorPen>=3?7.5:6.5,0,7); ctx.stroke(); }
+    // 탄두 장갑 등급 도넛 테두리는 제거: 총알/탄환처럼 보이도록 트레이서 색상만 유지한다.
     ctx.restore(); }
   for(const tr of turrets) drawTurret(tr);
   for(const e of enemies){ if(e.alive) drawEnemy(e); }
@@ -3760,6 +3835,13 @@ function drawGrenade(g){ ctx.fillStyle="rgba(0,0,0,.35)"; ctx.beginPath(); ctx.e
   ctx.fillStyle="#2f6b3f"; ctx.beginPath(); ctx.arc(g.x,gy,6,0,7); ctx.fill(); ctx.strokeStyle="#15171c"; ctx.lineWidth=2; ctx.stroke();
   if(Math.random()<0.7){ ctx.fillStyle=Math.random()<0.5?"#ffd24d":"#ff8a1a"; ctx.beginPath(); ctx.arc(g.x+4,gy-8,1.6+Math.random()*1.8,0,7); ctx.fill(); }   // 도화선 불꽃 치익~
   drawEyes(g.x,gy,3.2,Math.atan2(g.ty-g.y,g.tx-g.x)); }   // 눈깔
+function drawTurretFlameCone(tr){   // 화염 포탑 전용: 화염방사기와 같은 원뿔 불꽃
+  const ax=tr.ang, R=tr.range, h=tr.coneHalf;
+  ctx.save(); ctx.translate(tr.x,tr.y); ctx.rotate(ax);
+  const g=ctx.createRadialGradient(0,0,10,0,0,R); g.addColorStop(0,"rgba(255,230,80,.74)"); g.addColorStop(0.5,"rgba(255,100,18,.50)"); g.addColorStop(1,"rgba(120,30,0,0)");
+  ctx.fillStyle=g; ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,R,-h,h); ctx.closePath(); ctx.fill(); ctx.restore();
+  for(let i=0;i<5;i++){ const an=ax+(Math.random()-0.5)*h*2, rr=18+Math.random()*(R-18); drawFlame(tr.x+Math.cos(an)*rr,tr.y+Math.sin(an)*rr,7+Math.random()*7,i*2+tr.x*0.05); }
+}
 function drawTurret(tr){
   if(tr.deploy){   // 살포형 디스펜서(사출구가 도는 통)
     ctx.globalAlpha=0.06; ctx.fillStyle=tr.color; ctx.beginPath(); ctx.arc(tr.x,tr.y,tr.radius,0,7); ctx.fill(); ctx.globalAlpha=1;
@@ -3772,21 +3854,58 @@ function drawTurret(tr){
   }
   // 사거리/원뿔
   ctx.save();
-  if(tr.flame){ if(tr.active){ ctx.globalAlpha=0.35; ctx.fillStyle="#ff7a2e"; ctx.beginPath(); ctx.moveTo(tr.x,tr.y);
-    ctx.arc(tr.x,tr.y,tr.range,tr.ang-tr.coneHalf,tr.ang+tr.coneHalf); ctx.closePath(); ctx.fill(); } }
+  if(tr.flame){ if(tr.active) drawTurretFlameCone(tr); }
   else { ctx.globalAlpha=0.05; ctx.fillStyle=tr.color; ctx.beginPath(); ctx.arc(tr.x,tr.y,tr.range,0,7); ctx.fill(); }
   ctx.restore();
   ctx.fillStyle="rgba(0,0,0,.35)"; ctx.beginPath(); ctx.ellipse(tr.x,tr.y+6,15,7,0,0,7); ctx.fill();
   ctx.fillStyle="#3a4a55"; ctx.beginPath(); ctx.arc(tr.x,tr.y,13,0,7); ctx.fill();
-  // 포신(타겟 방향)
-  ctx.save(); ctx.translate(tr.x,tr.y); ctx.rotate(tr.ang); ctx.fillStyle=tr.color; ctx.fillRect(6,-4,16,8); ctx.restore();
+  // 포신(타겟 방향) — 기관총은 미니건 회전 총열, 로켓은 다련장 포드, 박격포는 하늘을 향한 관 형태
+  if(tr.mortar){
+    ctx.save(); ctx.translate(tr.x,tr.y);
+    ctx.fillStyle="#1d2228"; ctx.beginPath(); ctx.ellipse(0,7,16,7,0,0,7); ctx.fill();   // 바닥 지지판
+    ctx.strokeStyle="#2a3038"; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(-10,7); ctx.lineTo(-17,18); ctx.moveTo(10,7); ctx.lineTo(17,18); ctx.stroke();
+    ctx.rotate(-0.85); ctx.fillStyle=tr.color; ctx.fillRect(-6,-22,12,28);   // 하늘을 향한 박격포 관
+    ctx.fillStyle="#101318"; ctx.beginPath(); ctx.ellipse(0,-23,7,4,0,0,7); ctx.fill();
+    if(tr.muzzle>0){ ctx.fillStyle="#ffe14d"; ctx.beginPath(); ctx.arc(0,-25,5+Math.random()*4,0,7); ctx.fill(); }
+    ctx.restore();
+  } else {
+    ctx.save(); ctx.translate(tr.x,tr.y); ctx.rotate(tr.ang); ctx.fillStyle=tr.color;
+    if(tr.minigun){
+      const spin=tr.spin||0; for(let i=0;i<4;i++){ const oy=Math.sin(spin+i*Math.PI/2)*3.2; ctx.fillRect(5,oy-1.3,21,2.6); }
+      ctx.fillStyle="#20242b"; ctx.fillRect(4,-5,7,10);
+      if(tr.muzzle>0){ const k=Math.max(0.25,tr.muzzle/0.045), mr=18*k;
+        const mg=ctx.createRadialGradient(30,0,0,30,0,mr); mg.addColorStop(0,"#ffffff"); mg.addColorStop(0.35,"#ffe14d"); mg.addColorStop(0.72,"#ff8a1a"); mg.addColorStop(1,"rgba(255,90,0,0)");
+        ctx.fillStyle=mg; ctx.beginPath(); ctx.arc(30,0,mr,0,7); ctx.fill();
+        ctx.fillStyle="#fff7c8"; ctx.beginPath(); for(let s=0;s<8;s++){ const an=s*Math.PI/4, rr=(s%2?4:mr*1.05); ctx.lineTo(30+Math.cos(an)*rr,Math.sin(an)*rr); } ctx.closePath(); ctx.fill();
+        ctx.fillStyle="#ffd23a"; ctx.beginPath(); ctx.moveTo(27,-4*k); ctx.lineTo(30+mr*1.25,0); ctx.lineTo(27,4*k); ctx.closePath(); ctx.fill(); }
+    } else if(tr.rocketBurst>0){
+      for(let i=0;i<2;i++) for(let j=0;j<2;j++){ ctx.fillRect(6+i*8,-7+j*8,7,6); }
+      if(tr.backblast>0){ ctx.globalAlpha=0.45; ctx.fillStyle="#9aa6b0"; ctx.beginPath(); ctx.arc(-14,0,11+Math.random()*5,0,7); ctx.fill(); ctx.globalAlpha=1; }
+      if(tr.muzzle>0){ ctx.fillStyle="#ffb02e"; ctx.beginPath(); ctx.arc(26,0,7+Math.random()*4,0,7); ctx.fill(); }
+    } else if(tr.flame){
+      ctx.fillRect(6,-4,18,8); ctx.fillStyle="#20242b"; ctx.fillRect(2,-5,8,10);
+      if(tr.active){ ctx.fillStyle="#ffe14d"; ctx.beginPath(); ctx.arc(27,0,5+Math.random()*3,0,7); ctx.fill(); }
+    } else ctx.fillRect(6,-4,16,8);
+    ctx.restore();
+  }
   drawEyes(tr.x,tr.y-2,3.4,tr.ang);   // 눈깔(조준 방향 주시)
   ctx.fillStyle=tr.color; ctx.fillRect(tr.x-15,tr.y-22,30*Math.max(0,tr.life/18),3);
   ctx.fillStyle="#400"; ctx.fillRect(tr.x-15,tr.y-26,30,3); ctx.fillStyle="#ff6a3a"; ctx.fillRect(tr.x-15,tr.y-26,30*Math.max(0,tr.hp/tr.maxhp),3);   // 포탑 체력
 }
-function drawMissile(m){ ctx.fillStyle="#ff3a3a"; ctx.beginPath(); ctx.arc(m.x,m.y,5,0,7); ctx.fill();
-  ctx.globalAlpha=0.4; ctx.fillStyle="#ffb02e"; ctx.beginPath(); ctx.arc(m.x,m.y,8,0,7); ctx.fill(); ctx.globalAlpha=1;
-  drawEyes(m.x,m.y,2.8,Math.atan2(m.ty-m.y,m.tx-m.x)); }   // 표적을 보며 날아감
+function drawMissile(m){
+  const ang=Math.atan2(m.ty-m.y,m.tx-m.x);
+  if(m.rocketVisual){
+    const p=m.progress||0, z=Math.sin(p*Math.PI)*(m.arcH||60), px=m.x, py=m.y-z;
+    ctx.save(); ctx.globalAlpha=0.32; ctx.fillStyle="rgba(0,0,0,.42)"; ctx.beginPath(); ctx.ellipse(m.x,m.y,8,4,0,0,7); ctx.fill();
+    ctx.translate(px,py); ctx.rotate(ang);
+    ctx.fillStyle="#2e333b"; ctx.fillRect(-9,-4,19,8); ctx.fillStyle=m.color||"#ff3a3a"; ctx.fillRect(5,-4,8,8);
+    ctx.fillStyle="#111"; ctx.beginPath(); ctx.moveTo(13,0); ctx.lineTo(20,-4); ctx.lineTo(20,4); ctx.closePath(); ctx.fill();
+    ctx.fillStyle="#ffc23a"; ctx.beginPath(); ctx.moveTo(-10,0); ctx.lineTo(-20,-5); ctx.lineTo(-20,5); ctx.closePath(); ctx.fill();
+    ctx.globalAlpha=0.5; ctx.fillStyle="#ff6a1a"; ctx.beginPath(); ctx.arc(-19,0,7+Math.random()*3,0,7); ctx.fill();
+    ctx.restore();
+  } else { ctx.fillStyle="#ff3a3a"; ctx.beginPath(); ctx.arc(m.x,m.y,5,0,7); ctx.fill();
+    ctx.globalAlpha=0.4; ctx.fillStyle="#ffb02e"; ctx.beginPath(); ctx.arc(m.x,m.y,8,0,7); ctx.fill(); ctx.globalAlpha=1;
+    drawEyes(m.x,m.y,2.8,ang); } }   // 표적을 보며 날아감
 function drawDropship(s){
   ctx.fillStyle="rgba(0,0,0,.3)"; ctx.beginPath(); ctx.ellipse(s.x,s.y,s.r,s.r*0.45,0,0,7); ctx.fill();
   const by=s.y-70;
