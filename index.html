@@ -928,12 +928,9 @@ function recRole(r){
 }
 function pickStartRec(cands, filter, usedRoles){
   const arr=cands.filter(r=>validStartRec(r)&&filter(r));
-  // 시작 추천은 역할 중복을 강하게 막는다. 전부 화염이면 다른 카테고리 후보까지 확장해서라도 역할을 섞는다.
-  let best=arr.find(r=>!usedRoles.has(recRole(r))) || null;
-  if(!best){
-    const alt=cands.filter(r=>validStartRec(r)&&!usedRoles.has(recRole(r)));
-    best=alt[0] || arr[0] || null;
-  }
+  // 시작 추천은 역할 중복을 막되, 절대 슬롯 카테고리를 벗어나지 않는다.
+  // 이전 버그: 역할이 겹치면 alt를 전체 후보에서 뽑아 화력 슬롯에 기본무기가 들어갈 수 있었다.
+  const best=arr.find(r=>!usedRoles.has(recRole(r))) || arr[0] || null;
   if(best) usedRoles.add(recRole(best));
   return best||null;
 }
@@ -945,10 +942,23 @@ function startRecommendations(){
   add(fallbackBasicRec()); add(fallbackPowerRec()); add(fallbackDroneRec());
   // 시작 추천은 고정 슬롯 구성: 1) 기본 무기 2) 화력 무기 3) 드론. 폭격/포탑/공습은 전투 중 추천으로 넘긴다.
   const used=new Set();
-  const basic=pickStartRec(cands,r=>r.kind==="weapon"&&BASIC_IDS.includes(r.id),used) || fallbackBasicRec();
-  const power=pickStartRec(cands,r=>r.kind==="weapon"&&POWER_IDS.includes(r.id),used) || {kind:"weapon",id:"mg",why:"초반 전선 유지를 위한 범용 화력"};
-  const dr=pickStartRec(cands,r=>r.kind==="drone",used) || fallbackDroneRec();
-  const out=[]; for(const r0 of [basic,power,dr]){ const r=normalizeLiveRec(r0); if(r&&validStartRec(r)&&!out.some(x=>recKey(x)===recKey(r))) out.push(r); }
+  let basic=pickStartRec(cands,r=>r.kind==="weapon"&&BASIC_IDS.includes(r.id),used);
+  if(!basic || !BASIC_IDS.includes(basic.id)) basic=fallbackBasicRec();
+  let power=pickStartRec(cands,r=>r.kind==="weapon"&&POWER_IDS.includes(r.id),used);
+  if(!power || !POWER_IDS.includes(power.id)) power=fallbackPowerRec();
+  if(!power || !POWER_IDS.includes(power.id)) power={kind:"weapon",id:"mg",why:"초반 전선 유지를 위한 화력 구매 무기"};
+  let dr=pickStartRec(cands,r=>r.kind==="drone",used);
+  if(!dr || dr.kind!=="drone") dr=fallbackDroneRec();
+  const out=[];
+  const slots=[
+    {r:basic, ok:x=>x.kind==="weapon"&&BASIC_IDS.includes(x.id)},
+    {r:power, ok:x=>x.kind==="weapon"&&POWER_IDS.includes(x.id)},
+    {r:dr, ok:x=>x.kind==="drone"}
+  ];
+  for(const s of slots){
+    const r=normalizeLiveRec(s.r);
+    if(r&&s.ok(r)&&validStartRec(r)&&!out.some(x=>recKey(x)===recKey(r))) out.push(r);
+  }
   return out;
 }
 function recCardHTML(r,i){
@@ -1061,28 +1071,28 @@ const ETYPE={
 // w=실제 스폰 가중치, threat=브리핑 표시용 위협도(0~5), rec=구매 UI 추천 화력.
 const OPERATION_METAS=[
   {name:"감염체 확산", icon:"🐝", minLv:1, desc:"경장갑 물량 중심 — 기본 총기와 광역 화력으로 전선을 유지하라", weight:5,
-    threat:{inf:5,mech:1,heavy:0.5,anti:0}, w:{infected:82,assault:12,armored:1,droneEnemy:1},
+    threat:{inf:5,mech:1,heavy:0.5,anti:0}, w:{infected:88,breacher:4,charger_s:4,flyer:2,brood:2},
     rec:[{kind:"weapon",id:"fsmg",why:"경장갑 물량 제압"},{kind:"weapon",id:"fl",why:"좁은 길 화염 차단"},{kind:"bomb",id:2,why:"네이팜으로 전선 유지"},{kind:"turret",id:2,why:"화염 포탑으로 길목 봉쇄"}]},
   {name:"돌격전", icon:"🐗", minLv:1, desc:"돌격병과 샷건 돌파가 전선을 밀어붙임 — 특정 적을 찍는 것보다 거리 유지와 지속 화력이 중요하다", weight:4,
-    threat:{inf:2,mech:4,heavy:1,anti:0}, w:{infected:35,assault:55,suppressor:5,armored:5},
+    threat:{inf:2,mech:4,heavy:1,anti:0}, w:{assault:72,suppressor:16,armored:8,droneEnemy:4},
     rec:[{kind:"weapon",id:"ksg",why:"근접 돌파 저지"},{kind:"weapon",id:"lmg",why:"전방 돌격선 지속 제압"},{kind:"air",id:0,why:"기총소사로 돌격선 절단"},{kind:"turret",id:0,why:"기관총 포탑으로 전선 유지"}]},
   {name:"처절한 사격전", icon:"🔫", minLv:3, desc:"원거리 탄막과 수류탄이 엄폐를 압박 — 한 명을 골라 잡는 전투가 아니라 사격선 전체를 끊어야 한다", weight:4,
-    threat:{inf:1,mech:5,heavy:1,anti:0}, w:{infected:12,assault:45,suppressor:34,armored:4,droneEnemy:5},
+    threat:{inf:1,mech:5,heavy:1,anti:0}, w:{assault:46,suppressor:40,armored:6,droneEnemy:8},
     rec:[{kind:"air",id:3,why:"원형 방탄 배리어로 탄막 차단"},{kind:"air",id:4,why:"가로 연막으로 사격선 차단"},{kind:"air",id:0,why:"기총소사로 사격선을 한 번에 절단"},{kind:"bomb",id:0,why:"중장갑까지 관통하는 고폭탄으로 진지 붕괴"}]},
   {name:"폭발 압박", icon:"💣", minLv:4, desc:"수류탄·미사일·드론이 위치를 계속 바꾸게 만든다 — 정지하면 죽는 메타", weight:3,
-    threat:{inf:2,mech:4,heavy:2,anti:1}, w:{infected:20,assault:25,suppressor:32,armored:12,droneEnemy:9,special:2},
+    threat:{inf:2,mech:4,heavy:2,anti:1}, w:{assault:28,suppressor:38,armored:16,droneEnemy:12,special:6},
     rec:[{kind:"bomb",id:3,why:"EMP로 미사일·워커 압박 차단"},{kind:"air",id:3,why:"원형 배리어로 탄막 생존성 확보"},{kind:"air",id:0,why:"기총소사로 투척/사격선을 끊기"},{kind:"drone",id:4,why:"요격 드론으로 투사체 부담 감소"}]},
   {name:"장갑 호송", icon:"🚚", minLv:5, desc:"중장갑이 전선 중앙을 밀고 들어옴 — 대전차 화력을 준비하라", weight:3,
-    threat:{inf:2,mech:3,heavy:4,anti:1}, w:{infected:22,assault:24,suppressor:10,armored:32,droneEnemy:4,special:6,walker:2},
+    threat:{inf:2,mech:3,heavy:4,anti:1}, w:{assault:26,suppressor:12,armored:42,droneEnemy:6,special:8,walker:6},
     rec:[{kind:"weapon",id:"rg",why:"중장갑 핵심 대응"},{kind:"bomb",id:1,why:"대전차 장갑 신의 지팡이"},{kind:"air",id:5,why:"게이볼그 펀치로 전선 밀어내기"},{kind:"air",id:0,why:"중장갑 관통 기총소사"}]},
   {name:"전장 오염", icon:"☣️", minLv:6, desc:"화염차·독가스차가 좋은 엄폐와 길목을 망가뜨림 — 이동 동선을 계속 재선택해야 한다", weight:2,
-    threat:{inf:3,mech:2,heavy:2,anti:1}, w:{infected:32,assault:24,suppressor:8,armored:10,droneEnemy:4,special:22},
+    threat:{inf:3,mech:2,heavy:2,anti:1}, w:{assault:26,suppressor:10,armored:12,droneEnemy:8,special:44},
     rec:[{kind:"drone",id:0,why:"이동 중 자동 화력 보조"},{kind:"air",id:0,why:"오염 차량 진입선 절단"},{kind:"bomb",id:2,why:"네이팜으로 역으로 구역 봉쇄"},{kind:"turret",id:1,why:"로켓 포탑으로 차량 압박"}]},
   {name:"강습 워커", icon:"🤖", minLv:8, desc:"워커와 중장갑이 느리지만 확실하게 전선을 밀어버림 — 최고 화력을 아끼지 마라", weight:1,
-    threat:{inf:1,mech:3,heavy:5,anti:4}, w:{infected:14,assault:18,suppressor:16,armored:28,droneEnemy:6,special:8,walker:10},
+    threat:{inf:1,mech:3,heavy:5,anti:4}, w:{assault:16,suppressor:18,armored:30,droneEnemy:8,special:10,walker:18},
     rec:[{kind:"weapon",id:"rg",why:"대전차 장갑 대응"},{kind:"bomb",id:1,why:"신의 지팡이로 대형 표적 제압"},{kind:"air",id:5,why:"게이볼그 펀치로 워커 경직"},{kind:"air",id:2,why:"전술핵으로 전황 복구"}]},
   {name:"혼합 공세", icon:"⚔️", minLv:7, desc:"물량·탄막·장갑이 섞이는 상위 전장 — 보유 장비에 따라 전선을 유연하게 바꿔야 한다", weight:2,
-    threat:{inf:3,mech:4,heavy:4,anti:2}, w:{infected:24,assault:28,suppressor:20,armored:18,droneEnemy:5,special:4,walker:1},
+    threat:{inf:3,mech:4,heavy:4,anti:2}, w:{assault:34,suppressor:24,armored:24,droneEnemy:8,special:6,walker:4},
     rec:[{kind:"weapon",id:"mg",why:"일반장갑 전선 유지"},{kind:"air",id:0,why:"돌파/사격선 모두 대응"},{kind:"bomb",id:0,why:"중장갑 관통 광역"},{kind:"drone",id:4,why:"투사체 부담 완화"}]},
 ];
 let battleTheme=OPERATION_METAS[0], operationMeta=OPERATION_METAS[0];
@@ -1479,14 +1489,16 @@ function renderBuy(){
   } else if(buyStage==="air"){
     buyTitle.textContent="✈️ 전투기 폭격 (좁지만 빠른 대처)";
     buySub.textContent="구매 → 신호기 던지면 1초 뒤 전투기 공습. [Backspace] 뒤로";
-    const specs=["전방 좌→우 기총 난사 · 3회 연속 패스 · 대전차 관통·한 방 처치","전방으로 촘촘한 융단폭격 · 대전차 관통·한 방 처치","1초 뒤 핵폭발 · 대전차 관통(좁은 범위 초고화력)"];
+    const specs=["긴 직선 기총소사 · 중장갑 관통 · 전선 절단","전방으로 촘촘한 융단폭격 · 대전차 관통·한 방 처치","1초 뒤 핵폭발 · 대전차 관통(좁은 범위 초고화력)","전투기가 투하하는 돔형 방탄 배리어 · 적 탄환 차단 · HP 소진 시 붕괴","가로 연막벽 살포 · 적 시야/명중률 차단","차원문에서 거대 로봇팔 돌출 · 전방 펀칭/넉백"];
+
     buyList.innerHTML=AIR_TYPES.map((v,i)=>{ const cant=player.credits<AIR_COST[i]?"cant":"";
       return `<div class="item ${cant}${itemRecClass("air",i)}"><span><span class="key">${i+1}</span><span class="name">${v.name}${recHtml("air",i)}</span></span>
               <span class="spec">${specs[i]}</span><span class="cost">${AIR_COST[i]} C</span></div>`; }).join("");
   } else if(buyStage==="bomb"){
     buyTitle.textContent="📡 폭격 신호기 구매";
     buySub.textContent="구매 시 1회용 신호기 획득 → [F]로 수류탄처럼 투척. [Backspace] 뒤로";
-    const specs=["3초 후 10초간 광역 융단폭격 · 일반 장갑","최대 표적에 운동에너지 강하 · 대전차 관통","융단폭격 + 30초 화염 지대 · 일반 장갑"];
+    const specs=["3초 후 10초간 광역 융단폭격 · 중장갑 관통","하늘에서 강하 후 스카이콩콩처럼 반복 타격 · 대전차 장갑","융단폭격 + 30초 화염 지대 · 일반 장갑","EMP 폭격 · 드론/워커/기계화 병력 일시 무력화"];
+
     buyList.innerHTML=BOMB_TYPES.map((b,i)=>{
       const cant=player.credits<BOMB_COST[i]?"cant":"";
       return `<div class="item ${cant}${itemRecClass("bomb",i)}"><span><span class="key">${i+1}</span><span class="name">${b.name}${recHtml("bomb",i)}</span></span>
@@ -1519,9 +1531,12 @@ function renderBuy(){
 function closeShopAfterPurchase(){ if(buyOpen) toggleBuy(); }
 function buyWeapon(idx){
   const w=WEAPONS[idx];
+  if(w.id==="at" && hasActiveATMissile()){
+    pushLog("⚠️ 대전차 미사일은 1개만 운용 가능 — 현재 미사일을 발사/회수한 뒤 다시 주문하세요.","#ffb0b0"); toast("🚀 대전차 미사일 보유 중"); renderBuy(); return;
+  }
   if(player.credits<w.cost){ pushLog(`⚠️ 자금 부족 — ${w.name} (${w.cost}C 필요)`,"#ff8a8a"); renderBuy(); return; }
   player.credits-=w.cost;
-  const count = (w.id==="at")?2:1;   // 대전차 미사일은 1발짜리 2개 투하
+  const count = 1;   // 대전차 미사일은 1개만 투하 — 한 발 쏘고 다시 주워 쓰는 의도
   for(let i=0;i<count;i++){ const ang=Math.random()*Math.PI*2, d=70+Math.random()*60;
     pods.push({ x:player.x+Math.cos(ang)*d, y:player.y+Math.sin(ang)*d, z:760, wi:idx, landed:false }); }
   sfx("buy"); pushLog(`📦 ${w.name} 주문! 캡슐 ${count}개 투하 중... (-${w.cost}C)`, w.color); toast(`📦 ${w.name} 투하!`);
@@ -1696,7 +1711,7 @@ function resolveCovers(o){
 }
 function bulletHitsCover(b){ if(b.x<WALL||b.x>WORLD.w-WALL||b.y<WALL||b.y>WORLD.h-WALL) return true;
   for(const c of COVERS){ if(b.x>=c.x&&b.x<=c.x+c.w&&b.y>=c.y&&b.y<=c.y+c.h) return true; } return false; }
-function coverBetween(x0,y0,x1,y1){ const n=Math.ceil(Math.hypot(x1-x0,y1-y0)/12);
+function coverBetweenBase(x0,y0,x1,y1){ const n=Math.ceil(Math.hypot(x1-x0,y1-y0)/12);
   for(let i=1;i<n;i++){ const t=i/n,x=x0+(x1-x0)*t,y=y0+(y1-y0)*t; for(const c of COVERS) if(x>=c.x&&x<=c.x+c.w&&y>=c.y&&y<=c.y+c.h) return true; } return false; }
 
 //---------------- 사격 / 재장전 ----------------
@@ -1985,6 +2000,8 @@ function spawnEnemy(kind,x,y,role,home,pg,squad){
 function repickWP(pg){ patrolWP[pg]={x:WALL+150+Math.random()*(WORLD.w-WALL*2-300),y:WALL+150+Math.random()*(WORLD.h-WALL*2-300)}; }
 // 어그로/경계/전파 헬퍼
 function makeAggro(e){ if(!e.alive||e.aggro||e.daze>0) return; e.aggro=true; e.alertT=0; e.propT=3; e.icon="!"; e.iconT=ICON_BANG; e.lost=0; e.flank=(Math.random()-0.5);
+  // 기계화 원거리 병력은 교전 진입 후 첫 반응을 너무 늦게 하지 않도록 초기 사격 대기시간을 짧게 보정한다.
+  if(e.type && e.type.ranged && isMechEnemy(e)) e.fire=Math.min(e.fire||9,0.35+Math.random()*0.45);
   if(Math.random()<0.18 && thr("ebark",450)) popText(e.x,e.y-e.r-12,["헉!","발견!","적이다!"][Math.floor(Math.random()*3)],"#fff"); }
 function engageSquad(sq){ if(sq<0){ return; } for(const o of enemies){ if(o.alive && o.squad===sq && !o.aggro) makeAggro(o); } }  // 분대 전체 즉시 교전
 function setAlert(e,x,y){ if(!e.alive||e.aggro) return; e.alertT=ALERT_N; e.alertX=x; e.alertY=y; e.icon="?"; e.iconT=ALERT_N; }  // 경계(?) — 의심 방향 주시
@@ -2028,7 +2045,12 @@ function enemyAimAngle(e,dx,dy,baseSpread=0.14){
   return Math.atan2(dy,dx)+spread*(Math.random()-0.5)*2;
 }
 function enemyBullet(e,ang,dmg=9,spd=500,color="#ff7a2e",life=2,pen=0){
-  bullets.push({x:e.x,y:e.y,bornX:e.x,bornY:e.y,age:0,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,dmg:Math.round(dmg*DIFF.dmg),pen,splash:0,pierce:false,life,fromPlayer:false,owner:e,color,hits:[]});
+  dbgCounter('enemyShots');
+  const mx=e.x+Math.cos(ang)*(e.r+6), my=e.y+Math.sin(ang)*(e.r+6);
+  bullets.push({x:mx,y:my,bornX:mx,bornY:my,age:0,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,dmg:Math.round(dmg*DIFF.dmg),pen,splash:0,pierce:false,life,fromPlayer:false,owner:e,color,hits:[]});
+  // 적 사격이 실제로 발생했는지 한눈에 보이도록 총구 섬광을 남긴다.
+  particles.push({x:mx,y:my,vx:Math.cos(ang)*80,vy:Math.sin(ang)*80,life:0.12,max:0.12,r:5,color,kind:"spark"});
+  if(e.ev && (e.ev.kind==="mg"||e.ev.kind==="minigun"||e.ev.kind==="walker")) e.muzzleT=0.12;
 }
 function throwEnemyGrenade(e,tx,ty){
   const d=Math.hypot(tx-e.x,ty-e.y)||1;
@@ -2234,7 +2256,7 @@ let frameN=0;   // 프레임 카운터(원거리 적 AI 저빈도화용)
 //---------------- 디버그/프로파일링 안전장치 ----------------
 // F9 키: 디버그 오버레이 토글. 폭발/레이저/피격 루프가 멈추는 지점을 화면에 남긴다.
 const DEBUG_BUILD=true;
-const DBG={on:false,lines:[],counters:{},section:"",lastFrameMs:0,maxFrameMs:0,slow:[],err:""};
+const DBG={on:false,lines:[],counters:{},section:"",lastFrameMs:0,maxFrameMs:0,slow:[],err:"",ranged:null};
 function dbgLine(t){ if(!DEBUG_BUILD) return; DBG.lines.unshift(`${frameN} ${t}`); if(DBG.lines.length>18) DBG.lines.pop(); }
 function dbgCounter(k,n=1){ DBG.counters[k]=(DBG.counters[k]||0)+n; }
 function dbgBegin(){ DBG.counters={}; DBG.section="frame"; DBG._t=performance.now(); }
@@ -2246,8 +2268,9 @@ function updateDebugOverlay(force=false){
   if(!DBG.on&&!force){ el.style.display='none'; return; }
   el.style.display='block';
   const counters=Object.entries(DBG.counters).map(([k,v])=>`${k}:${v}`).join('  ');
+  const rg=DBG.ranged ? `RANGED ${DBG.ranged.kind}/${DBG.ranged.ev} d:${DBG.ranged.d}/${DBG.ranged.range} fire:${DBG.ranged.fire} reason:${DBG.ranged.reason} can:${DBG.ranged.can}` : 'RANGED -';
   el.textContent='DEBUG frame '+frameN+'  '+DBG.lastFrameMs.toFixed(1)+'ms max '+DBG.maxFrameMs.toFixed(1)+'ms  section:'+DBG.section+'\n'+
-    counters+'\n'+(DBG.err?'ERR '+DBG.err+'\n':'')+'SLOW\n'+DBG.slow.join('\n')+'\nLOG\n'+DBG.lines.join('\n');
+    counters+'\n'+rg+'\n'+(DBG.err?'ERR '+DBG.err+'\n':'')+'SLOW\n'+DBG.slow.join('\n')+'\nLOG\n'+DBG.lines.join('\n');
 }
 function debugToggle(){ DBG.on=!DBG.on; updateDebugOverlay(true); toast(DBG.on?'디버그 ON':'디버그 OFF'); }
 window.addEventListener('error',e=>dbgCrash(e.error||e.message));
@@ -2279,9 +2302,12 @@ function updateEnemies(dt){
     // 원거리 비전투 적 AI 저빈도화: 격프레임만 갱신(체감 동일, 연산 절감)
     if(!e.aggro && e.alertT<=0 && d>2400 && ((frameN+e.phase)&1)) continue;
     // 시야: 정면 원뿔 + 거리 + 엄폐 차단 → 분대 전체 어그로 (수풀 속이면 시야 거리 대폭 축소=은폐)
-    const evis = playerInBush ? e.vis*0.38 : e.vis;
+    const evis = (playerInBush ? e.vis*0.38 : e.vis) * smokeVisionMul(e);
     if(!e.aggro && d<evis){ let ad=Math.atan2(dy,dx)-e.face; while(ad>Math.PI)ad-=2*Math.PI; while(ad<-Math.PI)ad+=2*Math.PI;
-      if(Math.abs(ad)<e.fov && !coverBetween(e.x,e.y,player.x,player.y)){ if(e.squad>=0) engageSquad(e.squad); else makeAggro(e); } }
+      const mechAwareness = isMechEnemy(e) && d<evis*0.95;
+      // 기계화 병력은 사격전 메타의 핵심이므로 FOV가 랜덤 방향을 보고 있어서 영원히 반응하지 않는 상황을 방지한다.
+      // 단, 물리 엄폐와 연막 시야 차단은 그대로 존중한다.
+      if((Math.abs(ad)<e.fov || mechAwareness) && enemyHasLineOfFire(e)){ if(e.squad>=0) engageSquad(e.squad); else makeAggro(e); } }
     // 청각/사격 인지 → 경계(ALERT)
     if(!e.aggro){
       if(d<HEAR_NEAR) setAlert(e,player.x,player.y);                                                            // 근접
@@ -2336,15 +2362,18 @@ function updateEnemies(dt){
         } else {
           if(d>preferred+50){ e.x+=vx/vl*espeed(e)*chargeMul*speedMul*dt; e.y+=vy/vl*espeed(e)*chargeMul*speedMul*dt; }
           else if(d<preferred-90){ e.x-=vx/vl*espeed(e)*0.45*speedMul*dt; e.y-=vy/vl*espeed(e)*0.45*speedMul*dt; }
+          if(!Number.isFinite(e.fire)) e.fire=0.2;
           e.fire-=dt;
           let maxRange= ev.kind==="grenade"?760:ev.kind==="missile"?920:ev.kind==="walker"?1050:ev.kind==="shotgun"?280:620;
           if(e.empT>0) e.fire=Math.max(e.fire,0.25);
-          if(e.empT<=0 && e.fire<=0 && d<maxRange && !coverBetween(e.x,e.y,player.x,player.y)){
+          const fireGate=enemyCanFireAtPlayer(e,d,maxRange);
+          recordRangedDebug(e,d,maxRange,fireGate);
+          if(fireGate.can){
             fireEnemyShot(e,dx,dy);
             const k=ev.kind;
             // 사격 빈도 대폭 하향: 많이 맞아서 죽는 느낌보다, 전선 압박/위치 이동 압박을 우선한다.
             if(k==="mg") e.fire=(0.85+Math.random()*0.55)*DIFF.fireMul;
-            else if(k==="minigun") e.fire=(0.65+Math.random()*0.45)*DIFF.fireMul;
+            else if(k==="minigun") e.fire=((e.type&&e.type.family==="armored")?(4.2+Math.random()*2.1):(1.25+Math.random()*0.85))*DIFF.fireMul;
             else if(k==="grenade") e.fire=(6.5+Math.random()*3.5)*DIFF.fireMul;
             else if(k==="missile") e.fire=(7.5+Math.random()*3.8)*DIFF.fireMul;
             else if(k==="walker") e.fire=(2.4+Math.random()*1.6)*DIFF.fireMul;
@@ -2706,7 +2735,9 @@ function updateBullets(dt){
   let bulletProcessed=0;
   for(const b of bullets){ if(++bulletProcessed>900){ dbgCounter("bulletCap"); break; } if(b.life<=0) continue; b.age=(b.age||0)+dt; b.life-=dt; const bpx=b.x,bpy=b.y; b.x+=b.vx*dt; b.y+=b.vy*dt;   // bpx/bpy=이동 전 위치(선분 판정용)
     if(b.x<WALL||b.x>WORLD.w-WALL||b.y<WALL||b.y>WORLD.h-WALL){ if(b.splash>0) explode(b); b.life=0; continue; }
-    if(!b.fromPlayer){ const ba=pointInBarrier(b.x,b.y); if(ba){ b.life=0; particles.push({x:b.x,y:b.y,vx:(Math.random()-0.5)*90,vy:(Math.random()-0.5)*90,life:0.18,max:0.18,r:3,color:ba.color,kind:"spark"}); continue; } }
+    if(!b.fromPlayer){ const ba=pointInBarrier(b.x,b.y); if(ba){
+      ba.hp=(ba.hp==null?300:ba.hp)-(b.dmg||10); if(ba.hp<=0){ ba.life=0; boomFx(ba.x,ba.y,ba.r); pushLog("🛡️ 방탄 배리어 붕괴!","#7fd0ff"); }
+      b.life=0; particles.push({x:b.x,y:b.y,vx:(Math.random()-0.5)*120,vy:(Math.random()-0.5)*120,life:0.22,max:0.22,r:3,color:ba.color,kind:"spark"}); continue; } }
     const cc=coverAt(b.x,b.y);
     if(cc){ if(b.splash>0) explode(b); else if(b.fromPlayer && cc.type==="weak") damageCover(cc,b.dmg);  // 폭발물=광역파괴 / 일반탄=약한엄폐물만
       b.life=0; continue; }
@@ -2736,7 +2767,7 @@ function updateBullets(dt){
           if(e.weak){ let rel=Math.atan2(b.y-e.y,b.x-e.x)-e.vdir; while(rel>Math.PI)rel-=6.283; while(rel<-Math.PI)rel+=6.283; if(Math.abs(Math.abs(rel)-Math.PI/2)<0.8){ mult=Math.max(mult,3); pen=3; crit=true; } }   // 기모으기/구토 중 좌우 뺨=약점
           const bdir=Math.atan2(b.vy,b.vx); damageEnemy(e, b.dmg*mult, pen, false, false, crit, bdir);
           if(b.ignite && e.alive && Math.random()<b.ignite){ e.burn=Math.max(e.burn,3+Math.random()*1.5); }   // 소이탄: 확률 점화(화상 도트=장갑 무시)
-          if(b.knock && e.alive){ const km=(e.kind==="heavy"||e.kind==="charger")?0.4:1, kd=Math.hypot(e.x-player.x,e.y-player.y)||1; e.x+=(e.x-player.x)/kd*b.knock*km; e.y+=(e.y-player.y)/kd*b.knock*km; }   // 넉백
+          if(b.knock && e.alive){ const km=enemyKnockMul(e), kd=Math.hypot(e.x-player.x,e.y-player.y)||1; if(km>0){ e.x+=(e.x-player.x)/kd*b.knock*km; e.y+=(e.y-player.y)/kd*b.knock*km; } }   // 크기 기반 넉백
           if(b.splash>0){ explode(b); b.life=0; break; } if(b.pierce){ b.hits.push(e); } else { b.life=0; break; } }
         else if(ed<e.r+HEAR_BULLET && !e.aggro && e.alertT<=0) setAlert(e, e.x-b.vx*0.05, e.y-b.vy*0.05); }  // 탄착 스침 → 그쪽 경계
     } else {   // 적 탄: 피아구분 없음 → 다른 적 / 포탑 / 드론 / 플레이어 모두 명중
@@ -2973,7 +3004,7 @@ function updateAirstrikes(dt){
       if(!a.spawned && Math.abs(s)<=70){
         a.spawned=true;
         deliveryFx(a.x,a.y);
-        barriers.push({x:a.x,y:a.y,r:240,life:15,color:a.color,pulse:0});
+        barriers.push({x:a.x,y:a.y,r:120,life:15,hp:420,maxhp:420,color:a.color,pulse:0});
         pushLog("🛡️ 전투기 배리어 캡슐 투하 — 원형 방탄막 전개!",a.color); toast("🛡️ 배리어 투하"); sfx("shield");
         for(let k=0;k<16;k++) particles.push({x:a.x+(Math.random()-0.5)*80,y:a.y+(Math.random()-0.5)*80,vx:(Math.random()-0.5)*160,vy:(Math.random()-0.5)*160,life:0.55,max:0.55,r:3+Math.random()*4,color:a.color,kind:"spark"});
       }
@@ -2986,7 +3017,7 @@ function updateAirstrikes(dt){
         for(let k=0;k<10;k++) particles.push({x:px+(Math.random()-0.5)*200,y:py+(Math.random()-0.5)*200,vx:(Math.random()-0.5)*200,vy:(Math.random()-0.5)*200,life:0.3,max:0.3,r:3+Math.random()*3,color:Math.random()<0.5?"#ffd45d":"#fff",kind:"spark"}); }
     } else if(a.type==="smoke"){
       // 기총소사처럼 신호기 위치를 중심으로 가로로 연막탄을 주르륵 살포한다.
-      if(Math.abs(s)<=390){ a.scd=(a.scd||0)-dt; if(a.scd<=0){ a.scd=0.105; smokeFields.push({x:px+(Math.random()-0.5)*30,y:py+(Math.random()-0.5)*30,r:125,life:13,pulse:0}); sfx("puff"); } }
+      if(Math.abs(s)<=195){ a.scd=(a.scd||0)-dt; if(a.scd<=0){ a.scd=0.13; smokeFields.push({x:px+(Math.random()-0.5)*18,y:py+(Math.random()-0.5)*18,r:62,life:12,pulse:0}); sfx("puff"); } }
     } else if(a.type==="gaebolg"){
       // 전투기가 차원의 문을 투하 → 문에서 거대 로봇팔이 전방으로 뻗어나오며 펀칭한다.
       if(!a.portal && Math.abs(s)<=80){ a.portal=true; a.portalT=0; gaebolgFx.push({x:a.x,y:a.y,dir:a.dir,life:1.45,portal:true,reach:0}); sfx("warp"); pushLog("🌀 차원의 문 전개 — 게이볼그 펀치 준비!",a.color); }
@@ -3037,8 +3068,8 @@ function drawAirstrikes(){
     const ax=airAxis(a), warn=a.t<AIR_ACT;
     ctx.save(); ctx.translate(a.x,a.y); ctx.rotate(ax);
     ctx.globalAlpha=warn?(0.55+0.4*Math.sin(performance.now()/110)):0.16; ctx.strokeStyle=a.color; ctx.lineWidth=3; ctx.setLineDash([16,11]);
-    if(a.type==="barrier"){ ctx.beginPath(); ctx.arc(0,0,240,0,7); ctx.stroke(); if(warn){ ctx.globalAlpha=0.12; ctx.fillStyle=a.color; ctx.beginPath(); ctx.arc(0,0,240,0,7); ctx.fill(); } }
-    else { let lx,ly,lw,lh; if(a.type==="strafe"||a.type==="smoke"){ lx=-360; ly=-128; lw=720; lh=256; } else if(a.type==="gaebolg"){ lx=-360; ly=-125; lw=820; lh=250; } else { lx=0; ly=-150; lw=680; lh=300; } ctx.strokeRect(lx,ly,lw,lh); if(warn){ ctx.globalAlpha=0.12; ctx.fillStyle=a.color; ctx.fillRect(lx,ly,lw,lh); } }
+    if(a.type==="barrier"){ ctx.beginPath(); ctx.arc(0,0,120,0,7); ctx.stroke(); if(warn){ ctx.globalAlpha=0.12; ctx.fillStyle=a.color; ctx.beginPath(); ctx.arc(0,0,120,0,7); ctx.fill(); } }
+    else { let lx,ly,lw,lh; if(a.type==="strafe"||a.type==="smoke"){ lx=-240; ly=-64; lw=480; lh=128; } else if(a.type==="gaebolg"){ lx=-360; ly=-125; lw=820; lh=250; } else { lx=0; ly=-150; lw=680; lh=300; } ctx.strokeRect(lx,ly,lw,lh); if(warn){ ctx.globalAlpha=0.12; ctx.fillStyle=a.color; ctx.fillRect(lx,ly,lw,lh); } }
     ctx.setLineDash([]); ctx.restore();
     if(warn){ ctx.save(); ctx.fillStyle=a.color; ctx.font="bold 26px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("⚠ "+Math.max(1,Math.ceil(AIR_ACT-a.t+0.001)),a.x,a.y); ctx.restore(); }
     if(!warn && a.px!=null) drawPlane(a.px,a.py,ax,a.color);
@@ -3350,7 +3381,7 @@ function beaconPreviewInfo(item){
   if(!item) return {radius:34,label:"착탄"};
   if(item.cat==="turret"){ const t=TURRET_VARIANTS[item.variant]; return {radius:t.range||t.radius||160,label:t.name+" 범위"}; }
   if(item.cat==="bomb"){ const b=BOMB_TYPES[item.variant]; return {radius:b.area||b.splash||b.blast||120,label:b.name+" 범위"}; }
-  if(item.cat==="air"){ const a=AIR_TYPES[item.variant]; return {radius:a.kind==="barrier"?240:(a.kind==="nuke"?300:(a.kind==="carpet"?240:(a.kind==="smoke"?190:(a.kind==="gaebolg"?220:190)))),label:a.name+" 예상 범위"}; }
+  if(item.cat==="air"){ const a=AIR_TYPES[item.variant]; return {radius:a.kind==="barrier"?120:(a.kind==="nuke"?300:(a.kind==="carpet"?240:(a.kind==="smoke"?95:(a.kind==="gaebolg"?220:190)))),label:a.name+" 예상 범위"}; }
   return {radius:34,label:"착탄"};
 }
 function drawThrowGhost(){ if(!(throwAim&&rj.active) && heldBeacon<0) return;
@@ -3939,9 +3970,1232 @@ function loop(now){
     dbgEnd();
     requestAnimationFrame(loop);
   }catch(err){
-    dbgCrash(err); console.error(err); running=false; toast('디버그: 오류로 루프 중단(D로 로그 확인)');
+    dbgCrash(err); console.error(err); running=false; toast('디버그: 오류로 루프 중단(F9로 로그 확인)');
   }
 }
+
+
+// ===== 2026-07 visibility/faction/smoke/barrier/preview patch =====
+function hasActiveATMissile(){
+  const at=widx("at");
+  if(slots[1] && slots[1].wi===at){ const w=WEAPONS[at]; if((w.mag||0)+(w.reserve||0)>0) return true; }
+  for(const p of pods){ if(!p.picked && p.wi===at) return true; }
+  return false;
+}
+function smokeAtPoint(x,y){ for(const sm of smokeFields){ if(sm.life>0 && Math.hypot(x-sm.x,y-sm.y)<=sm.r) return sm; } return null; }
+function smokeBetween(x0,y0,x1,y1){ const n=Math.ceil(Math.hypot(x1-x0,y1-y0)/28); for(let i=1;i<n;i++){ const t=i/n,x=x0+(x1-x0)*t,y=y0+(y1-y0)*t; if(smokeAtPoint(x,y)) return true; } return false; }
+function smokeVisionMul(e){
+  const ein=smokeAtPoint(e.x,e.y), pin=smokeAtPoint(player.x,player.y);
+  if(ein && !pin) return 0.28;
+  if(pin && !ein) return 0.22;
+  if(ein && pin) return 0.42;
+  return 1;
+}
+function coverBetween(x0,y0,x1,y1){ return coverBetweenBase(x0,y0,x1,y1) || smokeBetween(x0,y0,x1,y1); }
+function enemyHasLineOfFire(e){
+  // 원거리 사격 판정은 물리 엄폐와 연막을 분리해서 처리한다.
+  // 이전에는 smoke/cover 통합 coverBetween만 사용해, 기계화 병력이 시야를 잡아도 실제 발사 조건에서 막히는 경우가 많았다.
+  if(coverBetweenBase(e.x,e.y,player.x,player.y)) return false;
+  if(smokeBetween(e.x,e.y,player.x,player.y)){
+    // 연막 안에서는 매우 가까운 거리에서만 대충 사격한다.
+    return Math.hypot(e.x-player.x,e.y-player.y)<260;
+  }
+  return true;
+}
+
+function enemyCanFireAtPlayer(e,d,maxRange){
+  const ev=e.ev||{};
+  if(!e.aggro) return {can:false,reason:"noAggro"};
+  if(e.empT>0) return {can:false,reason:"emp"};
+  if(e.fire>0) return {can:false,reason:"cooldown"};
+  if(d>=maxRange) return {can:false,reason:"range"};
+  const physical=coverBetweenBase(e.x,e.y,player.x,player.y);
+  const smoke=smokeBetween(e.x,e.y,player.x,player.y);
+  if(smoke && d>260) return {can:false,reason:"smoke"};
+  if(physical){
+    // 제국 기계화 원거리 병력은 엄폐물 때문에 조준만 하고 멈추는 일이 많았다.
+    // 기계화는 엄폐를 향해 제압사격을 하도록 허용한다. 탄환 자체는 월드 충돌에서 엄폐물에 막힌다.
+    if(isMechEnemy(e) && d<maxRange*0.92) return {can:true,reason:"coverSuppress"};
+    return {can:false,reason:"cover"};
+  }
+  return {can:true,reason:"clear"};
+}
+function recordRangedDebug(e,d,maxRange,gate){
+  if(!DEBUG_BUILD || !e || !e.type || !e.type.ranged) return;
+  if(isMechEnemy(e) || DBG.on){
+    DBG.ranged={kind:e.kind, ev:(e.ev&&e.ev.kind)||"?", d:Math.round(d), range:Math.round(maxRange), fire:(e.fire||0).toFixed(2), reason:gate.reason, can:!!gate.can};
+    dbgCounter('ranged_'+gate.reason);
+    if(!gate.can && frameN%90===0) dbgLine(`RANGED BLOCK ${e.kind}/${(e.ev&&e.ev.kind)||'?'} ${gate.reason} d:${Math.round(d)}/${Math.round(maxRange)} fire:${(e.fire||0).toFixed(2)}`);
+  }
+}
+
+function armorStrokeStyle(armor){
+  if(armor>=3) return {c:"#ff4050", w:5.5, dash:[8,4]};
+  if(armor>=2) return {c:"#ffb53b", w:4.5, dash:null};
+  if(armor>=1) return {c:"#6fb6ff", w:3.2, dash:null};
+  return {c:"rgba(230,230,230,.85)", w:2.0, dash:null};
+}
+function isMechEnemy(e){ const fam=e.type.family; return fam==="assault"||fam==="suppressor"||fam==="armored"||fam==="walker"||fam==="drone"||fam==="special"||e.kind==="mech"||e.kind==="gunner"; }
+function drawArmorOutlinePath(e,shape,r){ const st=armorStrokeStyle(e.type.armor||0); ctx.save(); ctx.strokeStyle=st.c; ctx.lineWidth=st.w; if(st.dash) ctx.setLineDash(st.dash); if(shape==="rect"){ roundRect(e.x-r,e.y-r*0.82,r*2,r*1.64,Math.max(3,r*0.18)); ctx.stroke(); if(e.type.armor>=3){ ctx.lineWidth=1.8; roundRect(e.x-r-6,e.y-r*0.82-6,r*2+12,r*1.64+12,8); ctx.stroke(); } } else { ctx.beginPath(); ctx.ellipse(e.x,e.y,r,r*0.88,0,0,7); ctx.stroke(); if(e.type.armor>=3){ ctx.lineWidth=1.8; ctx.beginPath(); ctx.ellipse(e.x,e.y,r+7,r*0.88+7,0,0,7); ctx.stroke(); } } ctx.restore(); }
+function drawEnemy(e){
+  if(e.type.flyer && e.kind!=="droneEnemy"){ drawFlyer(e); return; }
+  if(!e.aggro && Math.hypot(e.x-player.x,e.y-player.y)<1000){ ctx.save(); ctx.globalAlpha=0.05; ctx.fillStyle="#ffe14d"; ctx.beginPath(); ctx.moveTo(e.x,e.y); ctx.arc(e.x,e.y,e.vis*smokeVisionMul(e),e.face-e.fov,e.face+e.fov); ctx.closePath(); ctx.fill(); ctx.restore(); }
+  const r=e.r*(e.vscale||1), mech=isMechEnemy(e), ev=e.ev||{};
+  ctx.save(); ctx.fillStyle="rgba(0,0,0,.35)"; ctx.beginPath(); ctx.ellipse(e.x,e.y+r*0.72,r*0.95,r*0.42,0,0,7); ctx.fill(); ctx.restore();
+  const fill=e.hit>0?"#fff":e.type.color;
+  ctx.save(); ctx.fillStyle=fill;
+  if(mech){ roundRect(e.x-r,e.y-r*0.82,r*2,r*1.64,Math.max(3,r*0.18)); ctx.fill(); }
+  else { ctx.beginPath(); ctx.ellipse(e.x,e.y,r,r*0.88,0,0,7); ctx.fill(); }
+  ctx.restore();
+  drawArmorOutlinePath(e,mech?"rect":"ellipse",r);
+  const a=Math.atan2(player.y-e.y,player.x-e.x); ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(e.face||a);
+  if(mech){
+    ctx.fillStyle="#20242d"; ctx.fillRect(-r*0.45,-r*0.2,r*0.9,r*0.4);
+    if(e.type.family==="assault"){ ctx.fillStyle=ev.kind==="shotgun"?"#ffb35a":"#d8d8d8"; ctx.fillRect(r*0.2,-3,r*0.95,6); }
+    else if(e.type.family==="suppressor"){ ctx.fillStyle="#6f95ff"; ctx.fillRect(r*0.1,-4,r*1.25,8); if(ev.kind==="grenade"){ ctx.fillStyle="#ff3a3a"; ctx.beginPath(); ctx.arc(r*0.0,-r*0.65,5,0,7); ctx.fill(); } }
+    else if(e.type.family==="armored"){ ctx.fillStyle="#2b2d32"; ctx.fillRect(r*0.05,-r*0.24,r*1.05,r*0.48); if(ev.kind==="missile"){ ctx.fillStyle="#ff7a2e"; ctx.fillRect(r*0.55,-r*0.55,r*0.55,r*0.18); ctx.fillRect(r*0.55,r*0.37,r*0.55,r*0.18); } else if(ev.kind==="flame"){ ctx.fillStyle="#ff7a2e"; ctx.fillRect(r*0.45,-5,r*0.75,10); } }
+    else if(e.type.family==="drone"){ ctx.fillStyle="#9fd0ff"; ctx.fillRect(-r*0.95,-3,r*1.9,6); ctx.fillRect(-3,-r*0.95,6,r*1.9); ctx.fillStyle="#dfe8ff"; ctx.beginPath(); ctx.arc(0,0,r*0.45,0,7); ctx.fill(); if(ev.kind==="suicide"){ const blink=0.45+0.55*Math.sin(performance.now()/70); ctx.fillStyle=blink>0.55?"#ff3333":"#ffe14d"; ctx.fillText("🧨",0,-r*1.35); ctx.strokeStyle="#ff3333"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(0,0,r*(0.9+0.15*blink),0,7); ctx.stroke(); } }
+    else if(e.type.family==="walker"){ ctx.fillStyle="#3c454e"; ctx.fillRect(-r*0.55,-r*0.35,r*1.25,r*0.7); ctx.fillStyle="#ff7a2e"; ctx.fillRect(r*0.35,-r*0.65,r*0.75,r*0.18); ctx.fillRect(r*0.35,r*0.47,r*0.75,r*0.18); }
+    else if(e.type.family==="special"){ ctx.fillStyle=ev.kind==="gascar"?"#7CFF7C":"#ff7a2e"; ctx.fillRect(-r*0.8,-r*0.4,r*1.45,r*0.8); ctx.fillStyle="#111"; ctx.beginPath(); ctx.arc(-r*0.45,r*0.45,5,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(r*0.45,r*0.45,5,0,7); ctx.fill(); }
+  } else {
+    ctx.fillStyle="#ffe14d"; ctx.beginPath(); ctx.arc(Math.cos(-0.3)*r*0.5,Math.sin(-0.3)*r*0.5,2.5,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(Math.cos(0.3)*r*0.5,Math.sin(0.3)*r*0.5,2.5,0,7); ctx.fill();
+  }
+  ctx.restore();
+  if(e.hp<e.maxhp){ const w=e.r*2; ctx.fillStyle="#400"; ctx.fillRect(e.x-w/2,e.y-e.r-9,w,4); ctx.fillStyle="#ff4d4d"; ctx.fillRect(e.x-w/2,e.y-e.r-9,w*Math.max(0,e.hp/e.maxhp),4); }
+  if(e.burn>0){ ctx.font="15px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("🔥",e.x,e.y-e.r-18); }
+  if(e.tagT>0){ ctx.font="16px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("📡",e.x,e.y-e.r-34); }
+  if(e.aggro && e.iconT>0){ ctx.fillStyle="#ff4d4d"; ctx.font="bold 22px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("!",e.x,e.y-e.r-30); }
+  else if(e.alertT>0){ ctx.fillStyle="#ffe14d"; ctx.font="bold 22px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("?",e.x,e.y-e.r-30); }
+}
+function beaconPreviewInfo(item){
+  if(!item) return {shape:"circle",radius:34,label:"착탄"};
+  if(item.cat==="turret"){ const t=TURRET_VARIANTS[item.variant]; return {shape:"circle",radius:t.range||t.radius||160,label:t.name+" 범위"}; }
+  if(item.cat==="bomb"){ const b=BOMB_TYPES[item.variant]; return {shape:"circle",radius:b.radius||b.area||b.splash||b.blast||120,label:b.name+" 범위"}; }
+  if(item.cat==="air"){ const a=AIR_TYPES[item.variant]; if(a.kind==="barrier") return {shape:"circle",radius:120,label:a.name+" 돔"}; if(a.kind==="smoke") return {shape:"line",length:480,width:128,label:a.name+" 연막벽"}; if(a.kind==="gaebolg") return {shape:"line",length:820,width:250,label:a.name+" 돌진축"}; if(a.kind==="carpet") return {shape:"line",length:680,width:300,label:a.name+" 범위"}; if(a.kind==="strafe") return {shape:"line",length:720,width:256,label:a.name+" 사선"}; return {shape:"circle",radius:a.kind==="nuke"?300:190,label:a.name+" 범위"}; }
+  return {shape:"circle",radius:34,label:"착탄"};
+}
+const _oldDrawThrowGhost=drawThrowGhost;
+drawThrowGhost=function(){ if(!(throwAim&&rj.active) && heldBeacon<0) return; const wm=worldMouse(); let dx=wm.x-player.x,dy=wm.y-player.y,d=Math.hypot(dx,dy)||1; const maxR=heldBeacon>=0?520:440; if(d>maxR){ dx*=maxR/d; dy*=maxR/d; } const tx=player.x+dx, ty=player.y+dy, item=heldBeacon>=0?beacons[heldBeacon]:null, col=item?(item.color||"#ff8a3a"):"#7CFFB2", info=beaconPreviewInfo(item); ctx.save(); ctx.globalAlpha=0.9; ctx.strokeStyle=col; ctx.lineWidth=3; ctx.setLineDash([9,7]); ctx.beginPath(); ctx.moveTo(player.x,player.y); ctx.lineTo(tx,ty); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=0.12; ctx.fillStyle=col; ctx.beginPath(); ctx.arc(player.x,player.y,maxR,0,7); ctx.fill(); ctx.save(); ctx.translate(tx,ty); ctx.rotate(player.aim); ctx.globalAlpha=0.18; ctx.fillStyle=col; ctx.strokeStyle=col; ctx.lineWidth=2.5; ctx.setLineDash([10,6]); if(info.shape==="line"){ const L=info.length||500,Wd=info.width||120; ctx.fillRect(0,-Wd/2,L,Wd); ctx.strokeRect(0,-Wd/2,L,Wd); } else { ctx.beginPath(); ctx.arc(0,0,info.radius||60,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(0,0,info.radius||60,0,7); ctx.stroke(); } ctx.restore(); ctx.globalAlpha=1; ctx.beginPath(); ctx.arc(tx,ty,28,0,7); ctx.stroke(); ctx.beginPath(); ctx.moveTo(tx-34,ty); ctx.lineTo(tx+34,ty); ctx.moveTo(tx,ty-34); ctx.lineTo(tx,ty+34); ctx.stroke(); ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(tx,ty,5,0,7); ctx.fill(); ctx.fillStyle="#fff"; ctx.font="bold 13px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="bottom"; ctx.fillText(info.label,tx,ty-(info.radius||70)-8); ctx.restore(); };
+// 신규 지원 추천 반영: 사격전/폭발전에서는 방어·시야 지원도 후보에 올린다.
+const _oldScoreRecommendationCandidates=scoreRecommendationCandidates;
+scoreRecommendationCandidates=function(){ const list=_oldScoreRecommendationCandidates(); const mix=nearbyThreatMix(); if(mix.ranged>=3){ addRecCandidate(list,"air",3,97+mix.ranged,"원거리 탄막 대응 — 돔형 방탄 배리어","barrier-smoke-patch"); addRecCandidate(list,"air",4,93+mix.ranged,"사격선 차단 — 가로 연막벽 살포","smoke-patch"); } if((operationMeta.name||"").includes("폭발")||mix.drone>=2){ addRecCandidate(list,"bomb",3,94,"EMP로 기계화/미사일 압박 차단","emp-patch"); } return list.sort((a,b)=>b.score-a.score); };
+
+
+// ===== 2026-07-02 unified beacon preview + faction briefing + firefight faction lock =====
+// 효과 범위는 여기 한 곳에서만 정의하고, 신호기 미리보기와 실제 공습 경고 렌더가 같은 함수를 사용한다.
+function metaFactionName(m){
+  if(!m) return "알 수 없는 세력";
+  const w=m.w||{};
+  const mechKeys=["assault","suppressor","armored","droneEnemy","walker","special","mech","gunner"];
+  const infKeys=["infected","breacher","charger","charger_s","flyer","brood","spawnling"];
+  let mech=0,inf=0; for(const k of mechKeys) mech+=w[k]||0; for(const k of infKeys) inf+=w[k]||0;
+  if(mech>inf*1.2) return "제국 기계화 군단";
+  if(inf>mech*1.2) return "균열 감염체";
+  return "혼성 교전";
+}
+function lockMetaFaction(m){
+  if(!m||!m.w) return m;
+  const name=m.name||"";
+  if(name.includes("처절한 사격전")){
+    m.faction="제국 기계화 군단";
+    m.w={assault:46,suppressor:42,armored:6,droneEnemy:6};
+    m.threat={...(m.threat||{}), inf:0, mech:5, heavy:Math.max(1,(m.threat&&m.threat.heavy)||1)};
+  }else{
+    m.faction=metaFactionName(m);
+  }
+  return m;
+}
+const _chooseOperationMetaFactionBase=chooseOperationMeta;
+chooseOperationMeta=function(){ return lockMetaFaction(_chooseOperationMetaFactionBase()); };
+const _levelAdjustedMetaFactionBase=levelAdjustedMeta;
+levelAdjustedMeta=function(base,L){ return lockMetaFaction(_levelAdjustedMetaFactionBase(base,L)); };
+function operationMetaLabel(m){ return `${m.icon} ${m.name} · ${m.faction||metaFactionName(m)}`; }
+operationBriefingHTML=function(){
+  const m=operationMeta||chooseOperationMeta(), t=m.threat||{};
+  const rec=(m.rec||[]).map(normalizeLiveRec).filter(r=>r&&!isRecOwned(r)).slice(0,3).map(r=>`<span class="rec">추천</span> ${recName(r)} <span style="color:#9fb4c8">— ${r.why}</span>`).join("<br>");
+  return `<div><b>작전 브리핑:</b> ${operationMetaLabel(m)} <span style="color:#9fb4c8">Lv.${difficulty} ${DIFF_NAMES[difficulty-1]}</span></div>
+    <div style="margin-top:6px;color:#cfe">${m.desc}</div>
+    <div class="briefing">
+      <div class="line">교전 종족 <span style="color:#ffd45d;font-weight:800">${m.faction||metaFactionName(m)}</span></div>
+      <div class="line">감염체 활동 <span class="stars">${star(t.inf||0)}</span></div>
+      <div class="line">기계화 부대 <span class="stars">${star(t.mech||0)}</span></div>
+      <div class="line">중장갑 출현 <span class="stars">${star(t.heavy||0)}</span></div>
+      <div class="line">대전차 위협 <span class="stars">${star(t.anti||0)}</span></div>
+      <div class="line" style="margin-top:7px">${rec}</div>
+    </div>`;
+};
+const _renderDiffSelFactionBase=renderDiffSel;
+renderDiffSel=function(){ _renderDiffSelFactionBase(); if(operationMeta&&diffDescEl) diffDescEl.textContent=DIFF_DESC[difficulty-1]+" · "+operationMetaLabel(operationMeta); refreshBriefingPanel(); };
+
+function beaconEffectSpec(item){
+  if(!item) return {shape:"circle",radius:34,label:"착탄",origin:"center"};
+  if(item.cat==="turret"){
+    const t=TURRET_VARIANTS[item.variant]; return {shape:"circle",radius:t.range||t.radius||160,label:t.name+" 범위",origin:"center"};
+  }
+  if(item.cat==="bomb"){
+    const b=BOMB_TYPES[item.variant];
+    if(b.kind==="emp") return {shape:"circle",radius:b.radius||300,label:b.name+" EMP",origin:"center"};
+    return {shape:"circle",radius:b.radius||b.area||b.splash||b.blast||120,label:b.name+" 범위",origin:"center"};
+  }
+  if(item.cat==="air"){
+    const a=AIR_TYPES[item.variant];
+    if(a.kind==="barrier") return {shape:"circle",radius:120,label:a.name+" 돔",origin:"center"};
+    // 실제 연막은 |s|<=195 지점에 r=62 연막을 떨구므로 전체 길이 390, 폭은 개별 연막 지름 124와 동일하게 표시한다.
+    if(a.kind==="smoke") return {shape:"line",length:390,width:124,label:a.name+" 연막벽",origin:"center"};
+    if(a.kind==="gaebolg") return {shape:"line",length:780,width:250,label:a.name+" 펀치축",origin:"forward"};
+    if(a.kind==="carpet") return {shape:"line",length:680,width:440,label:a.name+" 폭격로",origin:"forward"};
+    if(a.kind==="strafe") return {shape:"line",length:720,width:250,label:a.name+" 사선",origin:"center"};
+    if(a.kind==="nuke") return {shape:"circle",radius:440,label:a.name+" 범위",origin:"center"};
+    return {shape:"circle",radius:190,label:a.name+" 범위",origin:"center"};
+  }
+  return {shape:"circle",radius:34,label:"착탄",origin:"center"};
+}
+function drawEffectSpecAt(x,y,ang,spec,color,warn){
+  ctx.save(); ctx.translate(x,y); ctx.rotate(ang||0);
+  ctx.strokeStyle=color||"#ffd45d"; ctx.fillStyle=color||"#ffd45d"; ctx.lineWidth=3; ctx.setLineDash([16,11]);
+  const alpha=warn?(0.55+0.4*Math.sin(performance.now()/110)):0.18;
+  ctx.globalAlpha=alpha;
+  if(spec.shape==="line"){
+    const L=spec.length||480, Wd=spec.width||120;
+    const ox=spec.origin==="forward"?0:-L/2;
+    ctx.strokeRect(ox,-Wd/2,L,Wd);
+    if(warn){ ctx.globalAlpha=0.12; ctx.fillRect(ox,-Wd/2,L,Wd); }
+  }else{
+    const R=spec.radius||80;
+    ctx.beginPath(); ctx.arc(0,0,R,0,7); ctx.stroke();
+    if(warn){ ctx.globalAlpha=0.12; ctx.beginPath(); ctx.arc(0,0,R,0,7); ctx.fill(); }
+  }
+  ctx.setLineDash([]); ctx.restore();
+}
+function airItemFromStrike(a){ return {cat:"air",variant:AIR_TYPES.findIndex(t=>t.kind===a.type),color:a.color,name:a.name}; }
+beaconPreviewInfo=function(item){ return beaconEffectSpec(item); };
+drawThrowGhost=function(){
+  if(!(throwAim&&rj.active) && heldBeacon<0) return;
+  const wm=worldMouse(); let dx=wm.x-player.x,dy=wm.y-player.y,d=Math.hypot(dx,dy)||1; const maxR=heldBeacon>=0?520:440;
+  if(d>maxR){ dx*=maxR/d; dy*=maxR/d; }
+  const tx=player.x+dx, ty=player.y+dy, item=heldBeacon>=0?beacons[heldBeacon]:null, col=item?(item.color||"#ff8a3a"):"#7CFFB2", spec=beaconEffectSpec(item);
+  ctx.save(); ctx.globalAlpha=0.9; ctx.strokeStyle=col; ctx.lineWidth=3; ctx.setLineDash([9,7]); ctx.beginPath(); ctx.moveTo(player.x,player.y); ctx.lineTo(tx,ty); ctx.stroke(); ctx.setLineDash([]);
+  ctx.globalAlpha=0.12; ctx.fillStyle=col; ctx.beginPath(); ctx.arc(player.x,player.y,maxR,0,7); ctx.fill(); ctx.restore();
+  drawEffectSpecAt(tx,ty,player.aim,spec,col,true);
+  ctx.save(); ctx.strokeStyle=col; ctx.lineWidth=2.5; ctx.beginPath(); ctx.arc(tx,ty,28,0,7); ctx.stroke(); ctx.beginPath(); ctx.moveTo(tx-34,ty); ctx.lineTo(tx+34,ty); ctx.moveTo(tx,ty-34); ctx.lineTo(tx,ty+34); ctx.stroke();
+  ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(tx,ty,5,0,7); ctx.fill(); ctx.font="bold 13px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="bottom"; ctx.fillText(spec.label,tx,ty-((spec.radius||Math.max(spec.width||0,70))+8)); ctx.restore();
+};
+drawAirstrikes=function(){
+  for(const a of airstrikes){
+    if(a.type==="nuke"){
+      if(a.t<2.4){ ctx.save(); drawEffectSpecAt(a.x,a.y,0,{shape:"circle",radius:440,label:"전술핵"},a.color||"#bfe6ff",true); ctx.fillStyle="#bfe6ff"; ctx.font="bold 26px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("☢ "+Math.max(0,Math.ceil(2.4-a.t)),a.x,a.y); ctx.restore(); }
+      continue;
+    }
+    const ax=airAxis(a), warn=a.t<AIR_ACT;
+    const spec=beaconEffectSpec(airItemFromStrike(a));
+    drawEffectSpecAt(a.x,a.y,ax,spec,a.color,warn);
+    if(warn){ ctx.save(); ctx.fillStyle=a.color; ctx.font="bold 26px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("⚠ "+Math.max(1,Math.ceil(AIR_ACT-a.t+0.001)),a.x,a.y); ctx.restore(); }
+    if(!warn && a.px!=null) drawPlane(a.px,a.py,ax,a.color);
+  }
+};
+
+
+
+// ===== 2026-07-02 beacon preview direction + armor outline color fix =====
+// 실제 공습은 airAxis(a)를 사용하므로, 미리보기 선형 범위도 같은 축을 사용한다.
+// 기총소사/연막은 실제 공격처럼 신호기 투척 방향의 가로축(dir + PI/2)으로 표시한다.
+function beaconPreviewAngle(item, fallbackAng){
+  if(item && item.cat==="air"){
+    const a=AIR_TYPES[item.variant];
+    if(a && (a.kind==="strafe" || a.kind==="smoke" || a.kind==="barrier")) return fallbackAng + Math.PI/2;
+  }
+  return fallbackAng||0;
+}
+function beaconLabelOffset(spec){
+  if(!spec) return 78;
+  if(spec.shape==="line") return Math.max(64, (spec.width||120)*0.5 + 26);
+  return (spec.radius||70)+8;
+}
+drawThrowGhost=function(){
+  if(!(throwAim&&rj.active) && heldBeacon<0) return;
+  const wm=worldMouse(); let dx=wm.x-player.x,dy=wm.y-player.y,d=Math.hypot(dx,dy)||1; const maxR=heldBeacon>=0?520:440;
+  if(d>maxR){ dx*=maxR/d; dy*=maxR/d; }
+  const tx=player.x+dx, ty=player.y+dy, item=heldBeacon>=0?beacons[heldBeacon]:null, col=item?(item.color||"#ff8a3a"):"#7CFFB2", spec=beaconEffectSpec(item);
+  ctx.save();
+  ctx.globalAlpha=0.9; ctx.strokeStyle=col; ctx.lineWidth=3; ctx.setLineDash([9,7]);
+  ctx.beginPath(); ctx.moveTo(player.x,player.y); ctx.lineTo(tx,ty); ctx.stroke(); ctx.setLineDash([]);
+  ctx.globalAlpha=0.12; ctx.fillStyle=col; ctx.beginPath(); ctx.arc(player.x,player.y,maxR,0,7); ctx.fill();
+  ctx.restore();
+  drawEffectSpecAt(tx,ty,beaconPreviewAngle(item, player.aim),spec,col,true);
+  ctx.save();
+  ctx.strokeStyle=col; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.arc(tx,ty,28,0,7); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(tx-34,ty); ctx.lineTo(tx+34,ty); ctx.moveTo(tx,ty-34); ctx.lineTo(tx,ty+34); ctx.stroke();
+  ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(tx,ty,5,0,7); ctx.fill();
+  ctx.font="bold 13px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="bottom";
+  ctx.fillText(spec.label,tx,ty-beaconLabelOffset(spec));
+  ctx.restore();
+};
+
+// 장갑 외곽선: 경장갑=얇은 회색, 일반장갑=흰색, 중장갑=노랑/주황, 대전차=빨간 이중선.
+armorStrokeStyle=function(armor){
+  if(armor>=3) return {c:"#ff4050", w:5.5, dash:[8,4]};
+  if(armor>=2) return {c:"#ffb53b", w:4.5, dash:null};
+  if(armor>=1) return {c:"#ffffff", w:3.4, dash:null};
+  return {c:"rgba(165,165,165,.72)", w:1.7, dash:null};
+};
+
+// 일반장갑 외곽선이 흰색이므로, 몸체가 흰색/회백색인 적은 역할색으로 재지정한다.
+(function recolorWhiteEnemiesForArmorReadability(){
+  const recolor={
+    assault:"#9aa7b3", mech:"#9aa7b3",
+    suppressor:"#5d8cff", gunner:"#5d8cff",
+    droneEnemy:"#4fd6ff", flyer:"#c78dff",
+    brood:"#b7e85a",
+    walker:"#7f8a96",
+    armored:"#caa23b", heavy:"#caa23b",
+    special:"#75d687"
+  };
+  for(const k in recolor){ if(ETYPE[k]) ETYPE[k].color=recolor[k]; }
+})();
+
+
+// ===== 2026-07-02 faction/meta cleanup + size-based knockback =====
+const FACTION_LABELS={infected:"균열 감염체", empire:"제국 기계화 군단"};
+const INFECTED_KINDS=new Set(["infected","breacher","charger","charger_s","flyer","brood","spawnling"]);
+const EMPIRE_KINDS=new Set(["assault","suppressor","armored","droneEnemy","walker","special"]);
+function kindFaction(kind){ if(INFECTED_KINDS.has(kind)) return "infected"; if(EMPIRE_KINDS.has(kind)) return "empire"; return "infected"; }
+function factionName(f){ return FACTION_LABELS[f]||"알 수 없는 세력"; }
+function allowedKindsForFaction(f){ return f==="empire" ? EMPIRE_KINDS : INFECTED_KINDS; }
+function filterWeightsByFaction(w,f){
+  const allow=allowedKindsForFaction(f), out={};
+  for(const k in (w||{})){ if(allow.has(k) && ETYPE[k]) out[k]=w[k]; }
+  if(!Object.keys(out).length){
+    if(f==="empire") Object.assign(out,{assault:55,suppressor:25,armored:12,droneEnemy:6,special:2});
+    else Object.assign(out,{infected:82,breacher:6,charger_s:5,flyer:3,brood:4});
+  }
+  return out;
+}
+function setEnemyMeta(k,meta){ if(ETYPE[k]) Object.assign(ETYPE[k],meta); }
+// 종족/크기/장갑/외형 역할 정의. 스폰, UI, 넉백, 외곽선이 이 값에 맞춰 동작한다.
+setEnemyMeta("infected", {faction:"infected", sizeClass:"S", family:"infected", color:"#9b3fdf"});
+setEnemyMeta("breacher", {faction:"infected", sizeClass:"M", family:"infected", color:"#d2691e"});
+setEnemyMeta("charger_s", {faction:"infected", sizeClass:"M", family:"infected", color:"#ff8838"});
+setEnemyMeta("charger", {faction:"infected", sizeClass:"L", family:"infected", color:"#e8641e"});
+setEnemyMeta("flyer", {faction:"infected", sizeClass:"S", family:"infected", color:"#c78dff"});
+setEnemyMeta("brood", {faction:"infected", sizeClass:"L", family:"infected", color:"#b7e85a"});
+setEnemyMeta("spawnling", {faction:"infected", sizeClass:"S", family:"infected", color:"#b46bff"});
+setEnemyMeta("assault", {faction:"empire", sizeClass:"M", family:"assault", color:"#9aa7b3"});
+setEnemyMeta("suppressor", {faction:"empire", sizeClass:"M", family:"suppressor", color:"#5d8cff"});
+setEnemyMeta("armored", {faction:"empire", sizeClass:"L", family:"armored", color:"#caa23b"});
+setEnemyMeta("droneEnemy", {faction:"empire", sizeClass:"S", family:"drone", color:"#4fd6ff"});
+setEnemyMeta("walker", {faction:"empire", sizeClass:"XL", family:"walker", color:"#7f8a96"});
+setEnemyMeta("special", {faction:"empire", sizeClass:"L", family:"special", color:"#75d687"});
+function enemyKnockMul(e){
+  const s=(e&&e.sizeClass)||(e&&e.type&&e.type.sizeClass)||"S";
+  if(s==="XL"||s==="L") return 0;
+  if(s==="M") return 0.38;
+  return 1;
+}
+// 작전 메타를 종족별로 완전 분리한다. 혼합 공세는 현재 개발 단계에서 혼동을 만들기 때문에 제거.
+OPERATION_METAS.splice(0,OPERATION_METAS.length,
+  {name:"감염체 확산", faction:"infected", icon:"🐝", minLv:1, desc:"균열 감염체 물량 중심 — 동글동글한 유기체가 전선을 밀어붙인다", weight:5,
+    threat:{inf:5,mech:0,heavy:0.5,anti:0}, w:{infected:88,breacher:4,charger_s:4,flyer:2,brood:2},
+    rec:[{kind:"weapon",id:"fsmg",why:"경장갑 물량 제압"},{kind:"weapon",id:"fl",why:"좁은 길 화염 차단"},{kind:"bomb",id:2,why:"네이팜으로 전선 유지"},{kind:"turret",id:2,why:"화염 포탑으로 길목 봉쇄"}]},
+  {name:"돌연변이 돌파", faction:"infected", icon:"🐗", minLv:2, desc:"돌진체와 공성체가 전선을 깨뜨리는 감염체 돌파전", weight:4,
+    threat:{inf:5,mech:0,heavy:2,anti:0}, w:{infected:62,breacher:12,charger_s:14,charger:6,brood:4,flyer:2},
+    rec:[{kind:"weapon",id:"ksg",why:"근접 돌파 저지"},{kind:"weapon",id:"lmg",why:"전방 지속 화력"},{kind:"air",id:0,why:"기총소사로 돌격선 절단"},{kind:"turret",id:0,why:"기관총 포탑으로 전선 유지"}]},
+  {name:"증식 군체", faction:"infected", icon:"🟣", minLv:4, desc:"증식체가 죽으며 분화체를 뿌리는 군체형 감염체 메타", weight:3,
+    threat:{inf:5,mech:0,heavy:2,anti:0}, w:{infected:58,brood:20,spawnling:8,breacher:8,charger_s:4,flyer:2},
+    rec:[{kind:"bomb",id:2,why:"네이팜으로 분화체 확산 차단"},{kind:"weapon",id:"fl",why:"근접 군체 소각"},{kind:"turret",id:2,why:"화염 포탑으로 접근 차단"},{kind:"drone",id:1,why:"화염 드론으로 물량 보조"}]},
+  {name:"비행 습격", faction:"infected", icon:"🦇", minLv:5, desc:"비행 감염체가 지상 물량과 함께 흔드는 기동 메타", weight:2,
+    threat:{inf:4,mech:0,heavy:1,anti:0}, w:{infected:58,flyer:22,charger_s:8,breacher:6,brood:6},
+    rec:[{kind:"weapon",id:"ar",why:"범용 지상·공중 대응"},{kind:"drone",id:0,why:"기관총 드론으로 공중 견제"},{kind:"air",id:0,why:"기총소사로 접근 축 정리"},{kind:"turret",id:0,why:"기관총 포탑 방어"}]},
+  {name:"제국 돌격전", faction:"empire", icon:"🪖", minLv:1, desc:"제국 기계화 군단의 네모난 돌격 보병이 전선을 압박한다", weight:4,
+    threat:{inf:0,mech:4,heavy:1,anti:0}, w:{assault:76,suppressor:12,armored:8,droneEnemy:4},
+    rec:[{kind:"weapon",id:"iar",why:"일반장갑 관통 중거리 대응"},{kind:"weapon",id:"mg",why:"기계화 보병 지속 제압"},{kind:"air",id:0,why:"중장갑 관통 기총소사"},{kind:"turret",id:0,why:"기관총 포탑 전선 유지"}]},
+  {name:"처절한 사격전", faction:"empire", icon:"🔫", minLv:3, desc:"제국 기계화 군단의 원거리 탄막과 수류탄이 엄폐를 압박한다", weight:4,
+    threat:{inf:0,mech:5,heavy:1,anti:0}, w:{assault:46,suppressor:42,armored:6,droneEnemy:6},
+    rec:[{kind:"air",id:3,why:"원형 방탄 배리어로 탄막 차단"},{kind:"air",id:4,why:"가로 연막으로 사격선 차단"},{kind:"air",id:0,why:"기총소사로 사격선 절단"},{kind:"bomb",id:0,why:"고폭탄으로 진지 붕괴"}]},
+  {name:"폭발 압박", faction:"empire", icon:"💣", minLv:4, desc:"수류탄·미사일·자폭 드론이 위치를 계속 바꾸게 만드는 기계화 공세", weight:3,
+    threat:{inf:0,mech:4,heavy:2,anti:1}, w:{assault:28,suppressor:40,armored:16,droneEnemy:12,special:4},
+    rec:[{kind:"bomb",id:3,why:"EMP로 미사일·기계화 압박 차단"},{kind:"air",id:3,why:"배리어로 탄막 생존성 확보"},{kind:"air",id:4,why:"연막으로 사격선 차단"},{kind:"drone",id:4,why:"요격 드론으로 투사체 부담 완화"}]},
+  {name:"장갑 호송", faction:"empire", icon:"🚚", minLv:5, desc:"제국 중장갑과 특수차량이 전선 중앙을 밀고 들어온다", weight:3,
+    threat:{inf:0,mech:3,heavy:4,anti:1}, w:{assault:24,suppressor:12,armored:46,droneEnemy:6,special:8,walker:4},
+    rec:[{kind:"weapon",id:"rg",why:"중장갑 핵심 대응"},{kind:"bomb",id:1,why:"대전차 장갑 신의 지팡이"},{kind:"air",id:5,why:"게이볼그 펀치로 전선 밀어내기"},{kind:"air",id:0,why:"중장갑 관통 기총소사"}]},
+  {name:"전장 오염", faction:"empire", icon:"☣️", minLv:6, desc:"화염·독가스 특수차량이 좋은 엄폐와 길목을 망가뜨린다", weight:2,
+    threat:{inf:0,mech:3,heavy:2,anti:1}, w:{assault:24,suppressor:10,armored:12,droneEnemy:8,special:46},
+    rec:[{kind:"drone",id:0,why:"이동 중 자동 화력 보조"},{kind:"air",id:0,why:"오염 차량 진입선 절단"},{kind:"bomb",id:3,why:"EMP로 기계화 속도 저하"},{kind:"turret",id:1,why:"로켓 포탑으로 차량 압박"}]},
+  {name:"강습 워커", faction:"empire", icon:"🤖", minLv:8, desc:"워커와 중장갑이 느리지만 확실하게 전선을 밀어버린다", weight:1,
+    threat:{inf:0,mech:3,heavy:5,anti:4}, w:{assault:16,suppressor:18,armored:30,droneEnemy:8,special:10,walker:18},
+    rec:[{kind:"weapon",id:"rg",why:"대전차 장갑 대응"},{kind:"bomb",id:1,why:"신의 지팡이로 대형 표적 제압"},{kind:"air",id:5,why:"게이볼그 펀치로 워커 경직"},{kind:"air",id:2,why:"전술핵으로 전황 복구"}]}
+);
+function metaFactionName(m){ return factionName((m&&m.faction)||"infected"); }
+function lockMetaFaction(m){ if(!m||!m.w) return m; m.w=filterWeightsByFaction(m.w,m.faction||"infected"); m.faction=m.faction||kindFaction(Object.keys(m.w)[0]||"infected"); return m; }
+function pickKind(w){
+  const f=(operationMeta&&operationMeta.faction)||(battleTheme&&battleTheme.faction)||"infected";
+  const fw=filterWeightsByFaction(w,f);
+  let tot=0; for(const k in fw) tot+=fw[k];
+  let r=Math.random()*tot; for(const k in fw){ r-=fw[k]; if(r<=0) return k; }
+  return f==="empire"?"assault":"infected";
+}
+levelAdjustedMeta=function(base,L){
+  const f=base.faction||"infected", w=filterWeightsByFaction(base.w,f), grow=Math.max(0,L-base.minLv);
+  for(const k in w){
+    const t=ETYPE[k]||{};
+    if(t.sizeClass==="L"||t.sizeClass==="XL"||t.family==="suppressor"||t.family==="drone") w[k]*=(1+grow*0.11);
+    else if(k==="infected"||k==="assault") w[k]*=Math.max(0.76,1-grow*0.03);
+  }
+  const threat={...base.threat};
+  if(f==="infected"){ threat.mech=0; threat.inf=Math.max(3,threat.inf||0); }
+  else { threat.inf=0; threat.mech=Math.max(3,threat.mech||0); }
+  threat.heavy=Math.min(5,(threat.heavy||0)+grow*0.18); if(L>=8) threat.anti=Math.min(5,(threat.anti||0)+1);
+  return {...base,w,threat,levelGrow:grow,faction:f};
+};
+chooseOperationMeta=function(){
+  const candidates=OPERATION_METAS.filter(m=>m.minLv<=difficulty);
+  let total=0; const weighted=candidates.map(m=>{ const age=Math.max(0,difficulty-m.minLv); const v=(m.weight||1)*(1+Math.min(3,age)*0.15); total+=v; return [m,v]; });
+  let r=Math.random()*total; for(const [m,v] of weighted){ r-=v; if(r<=0) return lockMetaFaction(levelAdjustedMeta(m,difficulty)); }
+  return lockMetaFaction(levelAdjustedMeta(candidates[0]||OPERATION_METAS[0],difficulty));
+};
+function operationMetaLabel(m){ return `${m.icon} ${m.name} · ${metaFactionName(m)}`; }
+spawnBountyTarget=function(){
+  if(!operationMeta) return;
+  const chance=difficulty<=2?0.85:(difficulty<=5?0.45:0.25); if(Math.random()>chance) return;
+  const o=objectives[Math.floor(Math.random()*objectives.length)]||{x:WORLD.w*0.5,y:WORLD.h*0.5,r:80};
+  const f=operationMeta.faction||"infected";
+  const kind=f==="empire" ? (difficulty>=8?"walker":(difficulty>=4?"armored":"suppressor")) : (difficulty>=8?"charger":(difficulty>=4?"brood":"breacher"));
+  const a=Math.random()*7,d=(o.r||70)+260+Math.random()*220,sq=nextSquad++;
+  spawnEnemy(kind,clampX(o.x+Math.cos(a)*d),clampY(o.y+Math.sin(a)*d),"guard",{x:o.x,y:o.y},null,sq);
+  const e=enemies[enemies.length-1]; e.bounty=true; e.bountyReward=difficulty<=2?2500:(difficulty<8?3500:5000); e.icon="🎖️"; e.iconT=999;
+  pushLog(`🎖️ 특수 토벌: ${e.type.name} 처치 보상 +${e.bountyReward}C`,"#ffd45d");
+};
+updateDepots=function(dt){
+  for(const dp of depots){ if(dp.hp<=0) continue;
+    if(Math.hypot(player.x-dp.x,player.y-dp.y) < 760){
+      dp.spawnCD-=dt;
+      if(dp.spawnCD<=0){ dp.spawnCD=5; const n=2+Math.floor(Math.random()*2), sq=nextSquad++;
+        for(let i=0;i<n;i++){ const a=Math.random()*7,d=44+Math.random()*30; const k=pickKind(battleTheme.w); spawnEnemy(k,dp.x+Math.cos(a)*d,dp.y+Math.sin(a)*d,"guard",{x:dp.x,y:dp.y},null,sq); makeAggro(enemies[enemies.length-1]); }
+      }
+    } else if(dp.spawnCD<3) dp.spawnCD=3;
+  }
+  depots=depots.filter(d=>d.hp>0);
+};
+const _spawnEnemySizeBase=spawnEnemy;
+spawnEnemy=function(kind,x,y,role,home,pg,squad){
+  const f=(operationMeta&&operationMeta.faction)||(battleTheme&&battleTheme.faction)||null;
+  if(f && !allowedKindsForFaction(f).has(kind)) kind=(f==="empire"?"assault":"infected");
+  _spawnEnemySizeBase(kind,x,y,role,home,pg,squad);
+  const e=enemies[enemies.length-1]; if(e){ e.faction=e.type.faction||kindFaction(kind); e.sizeClass=e.type.sizeClass||"S"; e.knockMul=enemyKnockMul(e); }
+};
+const _damageEnemySizeBase=damageEnemy;
+damageEnemy=function(e,dmg,pen,noAggro,noCredit,crit,hitDir,noSplit,noKnock){
+  if(!e||!e.alive) return;
+  const bx=e.x, by=e.y, before=e.hp;
+  _damageEnemySizeBase(e,dmg,pen,noAggro,noCredit,crit,hitDir,noSplit,true);
+  if(!noKnock && e.alive && before>e.hp){
+    const km=enemyKnockMul(e);
+    if(km>0){ const kx=bx-player.x, ky=by-player.y, kd=Math.hypot(kx,ky)||1; e.x+=kx/kd*5*km; e.y+=ky/kd*5*km; }
+  }
+};
+const _drawEnemyFactionBase=drawEnemy;
+drawEnemy=function(e){
+  _drawEnemyFactionBase(e);
+  // 증식체는 등에 올라탄 작은 분화체 실루엣을 표시해 죽으면 새끼가 나온다는 정보를 준다.
+  if(e&&e.alive&&e.kind==="brood"){
+    ctx.save(); ctx.fillStyle="#b46bff"; ctx.strokeStyle="#37135c"; ctx.lineWidth=1.5;
+    const n=6, rr=Math.max(3,e.r*0.13);
+    for(let i=0;i<n;i++){
+      const a=-2.45+i*(4.9/(n-1)); const px=e.x+Math.cos(a)*e.r*0.45, py=e.y-rr*0.3+Math.sin(a)*e.r*0.34;
+      ctx.beginPath(); ctx.arc(px,py,rr,0,7); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+  }
+};
+operationBriefingHTML=function(){
+  const m=operationMeta||chooseOperationMeta(), t=m.threat||{}, faction=metaFactionName(m);
+  const rec=(m.rec||[]).map(normalizeLiveRec).filter(r=>r&&!isRecOwned(r)).slice(0,3).map(r=>`<span class="rec">추천</span> ${recName(r)} <span style="color:#9fb4c8">— ${r.why}</span>`).join("<br>");
+  const factionDesc=m.faction==="empire"?"네모난 제국 병력 중심. 원거리 탄막·장갑·드론 압박에 대비하십시오.":"동글동글한 균열 생물 중심. 물량·돌진·분열 압박에 대비하십시오.";
+  return `<div><b>작전 브리핑:</b> ${operationMetaLabel(m)} <span style="color:#9fb4c8">Lv.${difficulty} ${DIFF_NAMES[difficulty-1]}</span></div>
+    <div style="margin-top:6px;color:#cfe">${m.desc}</div>
+    <div class="briefing">
+      <div class="line">교전 종족 <span style="color:#ffd45d;font-weight:800">${faction}</span></div>
+      <div class="line" style="color:#9fb4c8">${factionDesc}</div>
+      <div class="line">감염체 활동 <span class="stars">${star(t.inf||0)}</span></div>
+      <div class="line">기계화 부대 <span class="stars">${star(t.mech||0)}</span></div>
+      <div class="line">중장갑 출현 <span class="stars">${star(t.heavy||0)}</span></div>
+      <div class="line">대전차 위협 <span class="stars">${star(t.anti||0)}</span></div>
+      <div class="line" style="margin-top:7px">${rec}</div>
+    </div>`;
+};
+refreshBriefingPanel();
+
+
+// ===== 2026-07-02 empire exhaust weakpoint + tank/walker/drone readability patch =====
+function empireUnit(e){ return !!(e && e.type && (e.faction==="empire" || kindFaction(e.kind)==="empire" || isMechEnemy(e))); }
+function angDiffAbs(a,b){ let d=a-b; while(d>Math.PI)d-=Math.PI*2; while(d<-Math.PI)d+=Math.PI*2; return Math.abs(d); }
+function mechRearHit(e,hitDir){
+  if(!empireUnit(e) || e.kind==="droneEnemy") return false;
+  if(hitDir==null || !Number.isFinite(hitDir)) hitDir=Math.atan2(e.y-player.y,e.x-player.x);
+  const face=(e.face!=null?e.face:Math.atan2(player.y-e.y,player.x-e.x));
+  return angDiffAbs(hitDir,face)<0.72; // projectile moving into the rear exhaust direction
+}
+function exhaustWeakMul(e){
+  if(!empireUnit(e)) return 1;
+  if(e.kind==="walker" || e.type.family==="walker") return 2.35;
+  if(e.type.family==="armored" || e.kind==="armored") return 2.15;
+  if(e.type.family==="special") return 2.05;
+  return 1.75;
+}
+function exhaustHitFx(e){
+  if(!e||!e.alive) return;
+  e.exhaustHitT=0.35;
+  const face=(e.face!=null?e.face:Math.atan2(player.y-e.y,player.x-e.x));
+  const bx=e.x-Math.cos(face)*e.r*0.78, by=e.y-Math.sin(face)*e.r*0.78;
+  if(typeof dbgCounter==="function") dbgCounter('exhaustHit');
+  for(let i=0;i<8;i++){
+    const a=face+Math.PI+(Math.random()-0.5)*1.3, sp=80+Math.random()*210;
+    particles.push({x:bx,y:by,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:0.28+Math.random()*0.2,max:0.48,r:2+Math.random()*3,color:Math.random()<0.55?"#ff9a2e":"#cfe8ff",kind:"spark"});
+  }
+  if(Math.random()<0.35) popText(bx,by-10,"배기구!","#ffb35a");
+}
+const _damageEnemyExhaustBase=damageEnemy;
+damageEnemy=function(e,dmg,pen,noAggro,noCredit,crit,hitDir,noSplit,noKnock){
+  if(e && e.alive && mechRearHit(e,hitDir)){
+    dmg*=exhaustWeakMul(e);
+    crit=true;
+    exhaustHitFx(e);
+    if(e.type && e.type.family!=="walker" && e.type.family!=="armored" && Math.random()<0.18) e.empT=Math.max(e.empT||0,0.9); // small engine stumble for light machines
+  }
+  return _damageEnemyExhaustBase(e,dmg,pen,noAggro,noCredit,crit,hitDir,noSplit,noKnock);
+};
+function drawRotor(cx,cy,rad,tint){
+  const spin=performance.now()*0.036;
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(spin);
+  ctx.strokeStyle=tint||"rgba(210,245,255,.9)"; ctx.lineWidth=Math.max(1.5,rad*0.18); ctx.beginPath(); ctx.moveTo(-rad,0); ctx.lineTo(rad,0); ctx.moveTo(0,-rad); ctx.lineTo(0,rad); ctx.stroke();
+  ctx.globalAlpha=0.25; ctx.beginPath(); ctx.arc(0,0,rad*1.12,0,7); ctx.stroke();
+  ctx.restore();
+}
+function drawMechExhaustOverlay(e){
+  if(!empireUnit(e)) return;
+  const r=e.r*(e.vscale||1), face=(e.face!=null?e.face:Math.atan2(player.y-e.y,player.x-e.x));
+  ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(face);
+  if(e.kind==="droneEnemy" || e.type.family==="drone"){
+    const arm=r*1.05, rr=Math.max(5,r*0.32), blink=(e.ev&&e.ev.kind==="suicide")?(0.55+0.45*Math.sin(performance.now()/55)):0;
+    ctx.strokeStyle="rgba(140,210,255,.8)"; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(-arm,-arm); ctx.lineTo(arm,arm); ctx.moveTo(-arm,arm); ctx.lineTo(arm,-arm); ctx.stroke();
+    drawRotor(-arm,-arm,rr,e.ev&&e.ev.kind==="suicide"?"#ffb0a0":"#bdf7ff"); drawRotor(arm,-arm,rr,e.ev&&e.ev.kind==="suicide"?"#ffb0a0":"#bdf7ff"); drawRotor(-arm,arm,rr,e.ev&&e.ev.kind==="suicide"?"#ffb0a0":"#bdf7ff"); drawRotor(arm,arm,rr,e.ev&&e.ev.kind==="suicide"?"#ffb0a0":"#bdf7ff");
+    ctx.fillStyle=e.ev&&e.ev.kind==="suicide"?(blink>0.52?"#ff3030":"#ffd45d"):"#4fd6ff"; roundRect(-r*0.5,-r*0.38,r,r*0.76,4); ctx.fill();
+    if(e.ev&&e.ev.kind==="suicide"){ ctx.font=`${Math.max(13,r*0.9)}px sans-serif`; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("🧨",0,0); ctx.strokeStyle="#ff3333"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(0,0,r*(1.15+blink*0.25),0,7); ctx.stroke(); }
+    ctx.restore(); return;
+  }
+  // tank-like armored silhouette: tracks, turret, rear vents
+  if(e.type.family==="armored"){
+    ctx.fillStyle="rgba(20,22,26,.9)"; roundRect(-r*0.98,-r*0.72,r*1.95,r*0.23,4); ctx.fill(); roundRect(-r*0.98,r*0.49,r*1.95,r*0.23,4); ctx.fill();
+    ctx.fillStyle="rgba(38,42,48,.95)"; roundRect(-r*0.22,-r*0.35,r*0.75,r*0.7,5); ctx.fill();
+    ctx.fillStyle="#1a1d22"; ctx.fillRect(r*0.2,-r*0.11,r*1.18,r*0.22);
+  }
+  // walker silhouette: torso + legs, visually separate from tank
+  if(e.type.family==="walker"){
+    ctx.strokeStyle="#2c3138"; ctx.lineWidth=Math.max(5,r*0.12); ctx.beginPath(); ctx.moveTo(-r*0.16,r*0.42); ctx.lineTo(-r*0.72,r*0.95); ctx.moveTo(r*0.05,r*0.42); ctx.lineTo(r*0.58,r*0.95); ctx.moveTo(-r*0.16,-r*0.42); ctx.lineTo(-r*0.74,-r*0.95); ctx.moveTo(r*0.05,-r*0.42); ctx.lineTo(r*0.58,-r*0.95); ctx.stroke();
+    ctx.fillStyle="#4c5562"; roundRect(-r*0.35,-r*0.42,r*0.95,r*0.84,6); ctx.fill();
+    ctx.fillStyle="#15191f"; ctx.fillRect(r*0.25,-r*0.09,r*1.05,r*0.18);
+  }
+  // universal rear exhaust vents for empire machines
+  const glow=e.exhaustHitT>0?"#ff9a2e":"#101215";
+  ctx.fillStyle=glow; roundRect(-r*0.92,-r*0.34,r*0.26,r*0.24,3); ctx.fill(); roundRect(-r*0.92,r*0.10,r*0.26,r*0.24,3); ctx.fill();
+  ctx.strokeStyle=e.exhaustHitT>0?"#ffd45d":"rgba(255,255,255,.22)"; ctx.lineWidth=1.5; ctx.strokeRect(-r*0.92,-r*0.34,r*0.26,r*0.24); ctx.strokeRect(-r*0.92,r*0.10,r*0.26,r*0.24);
+  if(e.exhaustHitT>0){ ctx.globalAlpha=0.5; ctx.fillStyle="#ff7a2e"; ctx.beginPath(); ctx.ellipse(-r*1.12,0,r*0.22,r*0.48,0,0,7); ctx.fill(); }
+  else if(Math.random()<0.025){ particles.push({x:e.x-Math.cos(face)*r*1.0,y:e.y-Math.sin(face)*r*1.0,vx:-Math.cos(face)*(8+Math.random()*18),vy:-Math.sin(face)*(8+Math.random()*18),life:0.7,max:0.7,r:3+Math.random()*4,color:"rgba(40,40,40,.55)",kind:"blood"}); }
+  ctx.restore();
+}
+const _drawEnemyExhaustBase=drawEnemy;
+drawEnemy=function(e){
+  _drawEnemyExhaustBase(e);
+  if(e&&e.alive){ drawMechExhaustOverlay(e); if(e.exhaustHitT>0) e.exhaustHitT=Math.max(0,e.exhaustHitT-0.016); }
+};
+
+
+// ===== 2026-07-02 tank/walker separation + body/turret facing + tank cannon patch =====
+// 기계화 군단 판독 규칙:
+// - 보병/제압병: 강화 우주복. 포탑 없음. 몸 전체가 조준 방향으로 회전하고 정면으로만 사격한다.
+// - 탱크(armored): 차체는 이동 방향으로 회전. 사거리 안에서는 정지하고 포탑만 플레이어를 추적한다.
+// - 워커(walker): 다리/몸통 실루엣으로 탱크와 분리. 후면 배기구는 몸통 뒤에 고정된다.
+function mechBodyFace(e){ return Number.isFinite(e&&e.bodyFace) ? e.bodyFace : (Number.isFinite(e&&e.face) ? e.face : 0); }
+function mechTurretFace(e){ return Number.isFinite(e&&e.turretFace) ? e.turretFace : Math.atan2(player.y-e.y,player.x-e.x); }
+function mechIsTank(e){ return !!(e && e.type && e.type.family==='armored'); }
+function mechIsWalker(e){ return !!(e && e.type && e.type.family==='walker'); }
+function mechIsSuit(e){ return !!(e && e.type && (e.type.family==='assault'||e.type.family==='suppressor')); }
+const _spawnEnemyFacingPatch=spawnEnemy;
+spawnEnemy=function(kind,x,y,role,home,pg,squad){
+  _spawnEnemyFacingPatch(kind,x,y,role,home,pg,squad);
+  const e=enemies[enemies.length-1];
+  if(e && isMechEnemy(e)){
+    const a=Number.isFinite(e.face)?e.face:Math.random()*Math.PI*2;
+    e.bodyFace=a; e.turretFace=a; e.lastMoveX=e.x; e.lastMoveY=e.y;
+    if(mechIsTank(e)) e.type.name='제국 돌격전차';
+    if(mechIsWalker(e)) e.type.name='제국 강습 워커';
+  }
+};
+const _updateEnemiesFacingPatch=updateEnemies;
+updateEnemies=function(dt){
+  const prev=new Map();
+  for(const e of enemies){ if(e&&e.alive&&isMechEnemy(e)) prev.set(e,{x:e.x,y:e.y,b:e.bodyFace,t:e.turretFace}); }
+  _updateEnemiesFacingPatch(dt);
+  for(const e of enemies){ if(!e||!e.alive||!isMechEnemy(e)) continue;
+    const p=prev.get(e); const mx=p?e.x-p.x:0, my=p?e.y-p.y:0, moved=Math.hypot(mx,my);
+    const aim=Math.atan2(player.y-e.y,player.x-e.x);
+    if(mechIsTank(e) || mechIsWalker(e)){
+      if(moved>1.2) e.bodyFace=Math.atan2(my,mx); else if(!Number.isFinite(e.bodyFace)) e.bodyFace=Number.isFinite(e.face)?e.face:aim;
+      e.turretFace=aim;
+      e.face=e.bodyFace; // 시야/배기구/차체 기준은 몸통 방향. 포탑만 별도 방향을 사용한다.
+    }else if(mechIsSuit(e)){
+      e.bodyFace=aim; e.turretFace=aim; e.face=aim; // 소형 적은 포탑 없음: 몸 전체가 정면 조준.
+    }else if(e.type.family==='special'){
+      if(moved>1.2) e.bodyFace=Math.atan2(my,mx); else e.bodyFace=Number.isFinite(e.bodyFace)?e.bodyFace:aim;
+      e.turretFace=aim; e.face=e.bodyFace;
+    }else if(e.type.family==='drone'){
+      e.bodyFace=aim; e.turretFace=aim; e.face=aim;
+    }
+  }
+};
+function launchEnemyTankShell(e,tx,ty){
+  const face=mechTurretFace(e), mx=e.x+Math.cos(face)*(e.r*1.15+10), my=e.y+Math.sin(face)*(e.r*1.15+10);
+  const lead=0.12, gx=tx+(player.velX||0)*lead+(Math.random()-0.5)*190, gy=ty+(player.velY||0)*lead+(Math.random()-0.5)*190;
+  missiles.push({x:mx,y:my,tx:gx,ty:gy,spd:260*DIFF.bulletMul,dmg:38,pen:2,radius:64,enemy:true,color:'#ffb13b',tankShell:true});
+  e.muzzleT=0.18; popText(e.x,e.y-e.r-18,'전차포!','#ffb13b',16); sfx('rocket');
+}
+const _fireEnemyShotTankPatch=fireEnemyShot;
+fireEnemyShot=function(e,dx,dy){
+  const ev=e.ev||{};
+  // 기존 armored/minigun은 시각상 탱크로 보이므로 총알 난사 대신 조준 위치에 착탄 폭발하는 전차포로 변경.
+  if(e && e.type && e.type.family==='armored' && (ev.kind==='minigun' || ev.kind==='tank' || !ev.kind)){
+    launchEnemyTankShell(e,player.x,player.y); return;
+  }
+  return _fireEnemyShotTankPatch(e,dx,dy);
+};
+// 후면 약점 판정은 포탑이 아니라 차체 방향 기준이어야 한다.
+function mechRearHit(e,hitDir){
+  if(!empireUnit(e) || e.kind==='droneEnemy') return false;
+  if(hitDir==null || !Number.isFinite(hitDir)) hitDir=Math.atan2(e.y-player.y,e.x-player.x);
+  const face=mechBodyFace(e);
+  return angDiffAbs(hitDir,face)<0.72;
+}
+// 탱크/워커/강화복을 다시 그려서 포탑·배기구·무한궤도가 머리통에 붙어 보이지 않게 한다.
+function drawTrackPair(r){
+  ctx.fillStyle='rgba(15,17,20,.95)'; roundRect(-r*1.05,-r*0.82,r*2.1,r*0.26,5); ctx.fill(); roundRect(-r*1.05,r*0.56,r*2.1,r*0.26,5); ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.lineWidth=1.2; for(let i=-3;i<=3;i++){ const x=i*r*0.28; ctx.beginPath(); ctx.moveTo(x,-r*0.81); ctx.lineTo(x,-r*0.57); ctx.moveTo(x,r*0.57); ctx.lineTo(x,r*0.81); ctx.stroke(); }
+}
+function drawRearVents(r,e){
+  const glow=e.exhaustHitT>0?'#ff9a2e':'#101215';
+  ctx.fillStyle=glow; roundRect(-r*0.95,-r*0.34,r*0.30,r*0.24,3); ctx.fill(); roundRect(-r*0.95,r*0.10,r*0.30,r*0.24,3); ctx.fill();
+  ctx.strokeStyle=e.exhaustHitT>0?'#ffd45d':'rgba(255,255,255,.24)'; ctx.lineWidth=1.6; ctx.strokeRect(-r*0.95,-r*0.34,r*0.30,r*0.24); ctx.strokeRect(-r*0.95,r*0.10,r*0.30,r*0.24);
+  if(e.exhaustHitT>0){ ctx.globalAlpha=0.55; ctx.fillStyle='#ff7a2e'; ctx.beginPath(); ctx.ellipse(-r*1.18,0,r*0.25,r*0.52,0,0,7); ctx.fill(); ctx.globalAlpha=1; }
+}
+function drawMechExhaustOverlay(e){
+  if(!empireUnit(e)) return;
+  const r=e.r*(e.vscale||1);
+  // 쿼드콥터는 몸통 전후 약점보다 시인성이 중요하므로 별도 처리.
+  if(e.kind==='droneEnemy' || e.type.family==='drone'){
+    const face=mechBodyFace(e), arm=r*1.05, rr=Math.max(5,r*0.32), blink=(e.ev&&e.ev.kind==='suicide')?(0.55+0.45*Math.sin(performance.now()/55)):0;
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(face);
+    ctx.strokeStyle='rgba(140,210,255,.8)'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(-arm,-arm); ctx.lineTo(arm,arm); ctx.moveTo(-arm,arm); ctx.lineTo(arm,-arm); ctx.stroke();
+    drawRotor(-arm,-arm,rr,e.ev&&e.ev.kind==='suicide'?'#ffb0a0':'#bdf7ff'); drawRotor(arm,-arm,rr,e.ev&&e.ev.kind==='suicide'?'#ffb0a0':'#bdf7ff'); drawRotor(-arm,arm,rr,e.ev&&e.ev.kind==='suicide'?'#ffb0a0':'#bdf7ff'); drawRotor(arm,arm,rr,e.ev&&e.ev.kind==='suicide'?'#ffb0a0':'#bdf7ff');
+    ctx.fillStyle=e.ev&&e.ev.kind==='suicide'?(blink>0.52?'#ff3030':'#ffd45d'):'#4fd6ff'; roundRect(-r*0.5,-r*0.38,r,r*0.76,4); ctx.fill();
+    if(e.ev&&e.ev.kind==='suicide'){ ctx.font=`${Math.max(13,r*0.9)}px sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('🧨',0,0); ctx.strokeStyle='#ff3333'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(0,0,r*(1.15+blink*0.25),0,7); ctx.stroke(); }
+    ctx.restore(); return;
+  }
+  if(mechIsTank(e)){
+    const body=mechBodyFace(e), turret=mechTurretFace(e);
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(body);
+    drawTrackPair(r);
+    ctx.fillStyle=e.hit>0?'#fff':'#caa23b'; roundRect(-r*0.92,-r*0.58,r*1.84,r*1.16,8); ctx.fill();
+    drawRearVents(r,e);
+    ctx.restore();
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(turret);
+    ctx.fillStyle='#5e6672'; roundRect(-r*0.28,-r*0.32,r*0.72,r*0.64,6); ctx.fill();
+    ctx.fillStyle='#171a1f'; roundRect(r*0.24,-r*0.10,r*1.28,r*0.20,3); ctx.fill();
+    if(e.muzzleT>0){ ctx.fillStyle='#ffb13b'; ctx.beginPath(); ctx.arc(r*1.55,0,r*0.18,0,7); ctx.fill(); }
+    ctx.restore();
+    return;
+  }
+  if(mechIsWalker(e)){
+    const body=mechBodyFace(e), turret=mechTurretFace(e);
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(body);
+    ctx.strokeStyle='#2c3138'; ctx.lineWidth=Math.max(5,r*0.12); ctx.beginPath();
+    ctx.moveTo(-r*0.18,r*0.45); ctx.lineTo(-r*0.70,r*0.98); ctx.moveTo(r*0.12,r*0.45); ctx.lineTo(r*0.64,r*0.98);
+    ctx.moveTo(-r*0.18,-r*0.45); ctx.lineTo(-r*0.70,-r*0.98); ctx.moveTo(r*0.12,-r*0.45); ctx.lineTo(r*0.64,-r*0.98); ctx.stroke();
+    ctx.fillStyle=e.hit>0?'#fff':'#7f8a96'; roundRect(-r*0.62,-r*0.48,r*1.15,r*0.96,8); ctx.fill();
+    drawRearVents(r,e);
+    ctx.restore();
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(turret);
+    ctx.fillStyle='#3c454e'; roundRect(-r*0.32,-r*0.28,r*0.76,r*0.56,6); ctx.fill();
+    ctx.fillStyle='#16191f'; roundRect(r*0.30,-r*0.08,r*1.08,r*0.16,3); ctx.fill();
+    ctx.fillStyle='#ff7a2e'; ctx.fillRect(r*0.15,-r*0.58,r*0.72,r*0.14); ctx.fillRect(r*0.15,r*0.44,r*0.72,r*0.14);
+    ctx.restore(); return;
+  }
+  // 강화 우주복/특수 차량: 포탑 없음. 몸이 바라보는 방향의 뒤쪽에 배기구를 부착.
+  const face=mechBodyFace(e);
+  ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(face);
+  if(mechIsSuit(e)){
+    ctx.fillStyle='rgba(20,24,30,.88)'; roundRect(-r*0.56,-r*0.42,r*0.92,r*0.84,5); ctx.fill();
+    drawRearVents(r*0.72,e);
+  }else if(e.type.family==='special'){
+    ctx.fillStyle=e.ev&&e.ev.kind==='gascar'?'#7CFF7C':'#ff7a2e'; roundRect(-r*0.82,-r*0.44,r*1.5,r*0.88,6); ctx.fill();
+    drawRearVents(r,e);
+  }
+  ctx.restore();
+}
+const _drawMissileTankShellBase=drawMissile;
+drawMissile=function(m){
+  if(m&&m.tankShell){ ctx.fillStyle='#ffb13b'; ctx.beginPath(); ctx.arc(m.x,m.y,7,0,7); ctx.fill(); ctx.globalAlpha=0.38; ctx.fillStyle='#ff6a2e'; ctx.beginPath(); ctx.arc(m.x,m.y,13,0,7); ctx.fill(); ctx.globalAlpha=1; drawEyes(m.x,m.y,3.2,Math.atan2(m.ty-m.y,m.tx-m.x)); return; }
+  return _drawMissileTankShellBase(m);
+};
+
+
+// ===== 2026-07-02 final tank balance + single-piece empire body render fix =====
+// 탱크 밸런스: 전차포는 한 방 사망형이 아니라 위치를 강제하는 느린 폭발 압박으로 조정한다.
+// 위 updateEnemies 쿨다운도 armored/minigun이면 4.2~6.3초로 느려진다.
+function drawEmpireStatusAndIcons(e,r){
+  if(e.hp<e.maxhp){ const w=e.r*2; ctx.fillStyle="#400"; ctx.fillRect(e.x-w/2,e.y-e.r-9,w,4); ctx.fillStyle="#ff4d4d"; ctx.fillRect(e.x-w/2,e.y-e.r-9,w*Math.max(0,e.hp/e.maxhp),4); }
+  if(e.burn>0){ ctx.font="15px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("🔥",e.x,e.y-e.r-18); }
+  if(e.tagT>0){ ctx.font="16px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("📡",e.x,e.y-e.r-34); }
+  if(e.bounty){ ctx.save(); ctx.strokeStyle="#ffd45d"; ctx.lineWidth=3; ctx.globalAlpha=0.9; ctx.setLineDash([6,5]); ctx.beginPath(); ctx.arc(e.x,e.y,e.r+13,0,7); ctx.stroke(); ctx.setLineDash([]); ctx.restore(); ctx.font="18px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("🎖️",e.x,e.y-e.r-48); }
+  if(e.aggro && e.iconT>0){ ctx.fillStyle="#ff4d4d"; ctx.font="bold 22px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("!",e.x,e.y-e.r-30); }
+  else if(e.alertT>0){ ctx.fillStyle="#ffe14d"; ctx.font="bold 22px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("?",e.x,e.y-e.r-30); }
+}
+function drawSuitBody(e,r){
+  const ev=e.ev||{};
+  ctx.fillStyle=e.hit>0?"#fff":(e.type.family==="suppressor"?"#8fb3ff":"#74a8ff");
+  roundRect(-r*0.55,-r*0.52,r*1.05,r*1.04,6); ctx.fill();
+  ctx.fillStyle="#1f2632"; roundRect(-r*0.35,-r*0.34,r*0.48,r*0.68,5); ctx.fill();
+  // 어깨/다리 강화 우주복 실루엣
+  ctx.fillStyle="#dfe8ff"; roundRect(-r*0.72,-r*0.42,r*0.24,r*0.34,4); ctx.fill(); roundRect(-r*0.72,r*0.08,r*0.24,r*0.34,4); ctx.fill();
+  ctx.fillStyle="#2b3038"; roundRect(-r*0.25,-r*0.72,r*0.22,r*0.30,4); ctx.fill(); roundRect(-r*0.25,r*0.42,r*0.22,r*0.30,4); ctx.fill();
+  // 포탑이 아니라 몸 정면에 들린 총
+  ctx.fillStyle=ev.kind==="shotgun"?"#ffb35a":"#20242d"; roundRect(r*0.05,-r*0.10,r*1.0,r*0.20,3); ctx.fill();
+  if(ev.kind==="grenade"){ ctx.fillStyle="#ff3a3a"; ctx.beginPath(); ctx.arc(-r*0.18,-r*0.72,5,0,7); ctx.fill(); ctx.strokeStyle="#fff"; ctx.stroke(); }
+  drawRearVents(r*0.72,e);
+}
+function drawTankBodyOnly(e,r){
+  drawTrackPair(r);
+  ctx.fillStyle=e.hit>0?"#fff":"#caa23b"; roundRect(-r*0.94,-r*0.60,r*1.88,r*1.20,9); ctx.fill();
+  ctx.fillStyle="rgba(120,80,25,.22)"; roundRect(-r*0.42,-r*0.38,r*0.78,r*0.76,7); ctx.fill();
+  drawRearVents(r,e);
+}
+function drawTankTurretOnly(e,r){
+  ctx.fillStyle="#5e6672"; roundRect(-r*0.30,-r*0.34,r*0.74,r*0.68,7); ctx.fill();
+  ctx.fillStyle="#171a1f"; roundRect(r*0.22,-r*0.105,r*1.35,r*0.21,4); ctx.fill();
+  if(e.muzzleT>0){ ctx.fillStyle="#ffb13b"; ctx.beginPath(); ctx.arc(r*1.62,0,r*0.20,0,7); ctx.fill(); }
+}
+function drawWalkerBodyOnly(e,r){
+  ctx.strokeStyle="#2c3138"; ctx.lineWidth=Math.max(5,r*0.12); ctx.lineCap="round"; ctx.beginPath();
+  ctx.moveTo(-r*0.20,r*0.42); ctx.lineTo(-r*0.74,r*0.98); ctx.moveTo(r*0.10,r*0.42); ctx.lineTo(r*0.66,r*0.98);
+  ctx.moveTo(-r*0.20,-r*0.42); ctx.lineTo(-r*0.74,-r*0.98); ctx.moveTo(r*0.10,-r*0.42); ctx.lineTo(r*0.66,-r*0.98); ctx.stroke();
+  ctx.fillStyle=e.hit>0?"#fff":"#7f8a96"; roundRect(-r*0.62,-r*0.50,r*1.12,r*1.00,9); ctx.fill();
+  drawRearVents(r,e);
+}
+function drawWalkerTurretOnly(e,r){
+  ctx.fillStyle="#3c454e"; roundRect(-r*0.34,-r*0.29,r*0.78,r*0.58,7); ctx.fill();
+  ctx.fillStyle="#16191f"; roundRect(r*0.28,-r*0.085,r*1.1,r*0.17,4); ctx.fill();
+  ctx.fillStyle="#ff7a2e"; ctx.fillRect(r*0.12,-r*0.58,r*0.72,r*0.14); ctx.fillRect(r*0.12,r*0.44,r*0.72,r*0.14);
+}
+const _drawEnemyBeforeFinalEmpireFix=drawEnemy;
+drawEnemy=function(e){
+  if(!e || !e.alive) return;
+  if(!empireUnit(e)){ _drawEnemyBeforeFinalEmpireFix(e); return; }
+  // 드론은 기존 쿼드콥터 렌더를 유지하되, 이전 몸통 타원/사각형을 그리지 않는다.
+  if(e.kind==='droneEnemy' || e.type.family==='drone'){
+    if(!e.aggro && Math.hypot(e.x-player.x,e.y-player.y)<1000){ ctx.save(); ctx.globalAlpha=0.05; ctx.fillStyle="#ffe14d"; ctx.beginPath(); ctx.moveTo(e.x,e.y); ctx.arc(e.x,e.y,e.vis*smokeVisionMul(e),e.face-e.fov,e.face+e.fov); ctx.closePath(); ctx.fill(); ctx.restore(); }
+    const r=e.r*(e.vscale||1); ctx.fillStyle="rgba(0,0,0,.30)"; ctx.beginPath(); ctx.ellipse(e.x,e.y+r*0.65,r*1.15,r*0.38,0,0,7); ctx.fill();
+    drawMechExhaustOverlay(e); drawArmorOutlinePath(e,"rect",r); drawEmpireStatusAndIcons(e,r); return;
+  }
+  const r=e.r*(e.vscale||1);
+  if(!e.aggro && Math.hypot(e.x-player.x,e.y-player.y)<1000){ ctx.save(); ctx.globalAlpha=0.05; ctx.fillStyle="#ffe14d"; ctx.beginPath(); ctx.moveTo(e.x,e.y); ctx.arc(e.x,e.y,e.vis*smokeVisionMul(e),e.face-e.fov,e.face+e.fov); ctx.closePath(); ctx.fill(); ctx.restore(); }
+  ctx.fillStyle="rgba(0,0,0,.35)"; ctx.beginPath(); ctx.ellipse(e.x,e.y+r*0.72,r*1.05,r*0.42,0,0,7); ctx.fill();
+  if(mechIsTank(e)){
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(mechBodyFace(e)); drawTankBodyOnly(e,r); ctx.restore();
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(mechTurretFace(e)); drawTankTurretOnly(e,r); ctx.restore();
+    drawArmorOutlinePath(e,"rect",r);
+  }else if(mechIsWalker(e)){
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(mechBodyFace(e)); drawWalkerBodyOnly(e,r); ctx.restore();
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(mechTurretFace(e)); drawWalkerTurretOnly(e,r); ctx.restore();
+    drawArmorOutlinePath(e,"rect",r);
+  }else if(mechIsSuit(e)){
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(mechBodyFace(e)); drawSuitBody(e,r); ctx.restore();
+    drawArmorOutlinePath(e,"rect",r);
+  }else if(e.type.family==='special'){
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(mechBodyFace(e));
+    ctx.fillStyle=e.ev&&e.ev.kind==='gascar'?"#7CFF7C":"#ff7a2e"; roundRect(-r*0.86,-r*0.48,r*1.56,r*0.96,7); ctx.fill();
+    ctx.fillStyle="#111"; ctx.beginPath(); ctx.arc(-r*0.45,r*0.52,5,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(r*0.45,r*0.52,5,0,7); ctx.fill();
+    drawRearVents(r,e); ctx.restore(); drawArmorOutlinePath(e,"rect",r);
+  }else{
+    _drawEnemyBeforeFinalEmpireFix(e); return;
+  }
+  drawEmpireStatusAndIcons(e,r);
+};
+
+
+// ===== 2026-07-02 final fix: rotate armor outline with empire body =====
+// 이전 버전은 차체만 회전하고 장갑 테두리는 월드축 사각형으로 다시 그려서,
+// 탱크가 회전할 때 노란 몸통과 테두리가 따로 노는 문제가 있었다.
+function drawLocalArmorRect(r, armor){
+  const st=armorStrokeStyle(armor||0);
+  ctx.save();
+  ctx.strokeStyle=st.c;
+  ctx.lineWidth=st.w;
+  if(st.dash) ctx.setLineDash(st.dash);
+  roundRect(-r, -r*0.82, r*2, r*1.64, Math.max(3,r*0.18));
+  ctx.stroke();
+  if((armor||0)>=3){
+    ctx.lineWidth=1.8;
+    roundRect(-r-6, -r*0.82-6, r*2+12, r*1.64+12, 8);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawEmpireBodyOutlineLocal(e,r){
+  // 장갑 테두리는 차체/강화복 방향과 같은 좌표계에서 그린다.
+  drawLocalArmorRect(r, e.type && e.type.armor || 0);
+}
+const _drawEnemyBeforeRotatedArmorOutlineFix=drawEnemy;
+drawEnemy=function(e){
+  if(!e || !e.alive) return;
+  if(!empireUnit(e)){ _drawEnemyBeforeRotatedArmorOutlineFix(e); return; }
+
+  if(e.kind==='droneEnemy' || e.type.family==='drone'){
+    if(!e.aggro && Math.hypot(e.x-player.x,e.y-player.y)<1000){
+      ctx.save(); ctx.globalAlpha=0.05; ctx.fillStyle="#ffe14d"; ctx.beginPath(); ctx.moveTo(e.x,e.y); ctx.arc(e.x,e.y,e.vis*smokeVisionMul(e),e.face-e.fov,e.face+e.fov); ctx.closePath(); ctx.fill(); ctx.restore();
+    }
+    const r=e.r*(e.vscale||1);
+    ctx.fillStyle="rgba(0,0,0,.30)"; ctx.beginPath(); ctx.ellipse(e.x,e.y+r*0.65,r*1.15,r*0.38,0,0,7); ctx.fill();
+    drawMechExhaustOverlay(e);
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(mechBodyFace(e)); drawEmpireBodyOutlineLocal(e,r); ctx.restore();
+    drawEmpireStatusAndIcons(e,r);
+    return;
+  }
+
+  const r=e.r*(e.vscale||1);
+  if(!e.aggro && Math.hypot(e.x-player.x,e.y-player.y)<1000){
+    ctx.save(); ctx.globalAlpha=0.05; ctx.fillStyle="#ffe14d"; ctx.beginPath(); ctx.moveTo(e.x,e.y); ctx.arc(e.x,e.y,e.vis*smokeVisionMul(e),e.face-e.fov,e.face+e.fov); ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+  ctx.fillStyle="rgba(0,0,0,.35)"; ctx.beginPath(); ctx.ellipse(e.x,e.y+r*0.72,r*1.05,r*0.42,0,0,7); ctx.fill();
+
+  if(mechIsTank(e)){
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(mechBodyFace(e)); drawTankBodyOnly(e,r); drawEmpireBodyOutlineLocal(e,r); ctx.restore();
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(mechTurretFace(e)); drawTankTurretOnly(e,r); ctx.restore();
+  }else if(mechIsWalker(e)){
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(mechBodyFace(e)); drawWalkerBodyOnly(e,r); drawEmpireBodyOutlineLocal(e,r); ctx.restore();
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(mechTurretFace(e)); drawWalkerTurretOnly(e,r); ctx.restore();
+  }else if(mechIsSuit(e)){
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(mechBodyFace(e)); drawSuitBody(e,r); drawEmpireBodyOutlineLocal(e,r); ctx.restore();
+  }else if(e.type.family==='special'){
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(mechBodyFace(e));
+    ctx.fillStyle=e.ev&&e.ev.kind==='gascar'?"#7CFF7C":"#ff7a2e"; roundRect(-r*0.86,-r*0.48,r*1.56,r*0.96,7); ctx.fill();
+    ctx.fillStyle="#111"; ctx.beginPath(); ctx.arc(-r*0.45,r*0.52,5,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(r*0.45,r*0.52,5,0,7); ctx.fill();
+    drawRearVents(r,e); drawEmpireBodyOutlineLocal(e,r); ctx.restore();
+  }else{
+    _drawEnemyBeforeRotatedArmorOutlineFix(e); return;
+  }
+  drawEmpireStatusAndIcons(e,r);
+};
+
+
+
+// ===== 2026-07-02 suit silhouette + tank turret tracking balance patch =====
+// 목표:
+// 1) 돌격병/샷건병은 같은 네모가 아니라 실루엣으로 구분한다.
+// 2) 소형 강화복은 포탑이 없고 몸 전체가 정면으로 조준한다.
+// 3) 탱크는 근거리에서 플레이어가 측면으로 돌면 포탑 회전이 따라오지 못한다.
+function smoothAngleToward(cur,target,maxStep){
+  if(!Number.isFinite(cur)) cur=target;
+  let d=target-cur; while(d>Math.PI)d-=Math.PI*2; while(d<-Math.PI)d+=Math.PI*2;
+  if(Math.abs(d)<=maxStep) return target;
+  return cur + Math.sign(d)*maxStep;
+}
+function tankTurretTurnRate(e,dist){
+  // 초당 라디안. 가까울수록 플레이어가 옆으로 돌 때 포탑이 못 따라오게 한다.
+  if(dist<170) return 0.55;
+  if(dist<280) return 0.82;
+  if(dist<430) return 1.05;
+  return 1.35;
+}
+const _updateEnemiesTankTurretLagPatch=updateEnemies;
+updateEnemies=function(dt){
+  const before=new Map();
+  for(const e of enemies){
+    if(e&&e.alive&&isMechEnemy(e)) before.set(e,{x:e.x,y:e.y,body:e.bodyFace,turret:e.turretFace});
+  }
+  _updateEnemiesTankTurretLagPatch(dt);
+  for(const e of enemies){
+    if(!e||!e.alive||!isMechEnemy(e)) continue;
+    const p=before.get(e)||{x:e.x,y:e.y,body:e.bodyFace,turret:e.turretFace};
+    const mx=e.x-p.x, my=e.y-p.y, moved=Math.hypot(mx,my);
+    const aim=Math.atan2(player.y-e.y,player.x-e.x);
+    const dist=Math.hypot(player.x-e.x,player.y-e.y);
+    if(mechIsTank(e)){
+      // 차체는 이동 방향을 바라보고, 정지 중이면 기존 방향 유지.
+      if(moved>1.1) e.bodyFace=Math.atan2(my,mx);
+      else if(!Number.isFinite(e.bodyFace)) e.bodyFace=Number.isFinite(e.face)?e.face:aim;
+      const oldTurret=Number.isFinite(p.turret)?p.turret:(Number.isFinite(e.turretFace)?e.turretFace:e.bodyFace);
+      e.turretFace=smoothAngleToward(oldTurret,aim,tankTurretTurnRate(e,dist)*dt);
+      e.face=e.bodyFace;
+    }else if(mechIsWalker(e)){
+      if(moved>1.1) e.bodyFace=Math.atan2(my,mx);
+      else if(!Number.isFinite(e.bodyFace)) e.bodyFace=Number.isFinite(e.face)?e.face:aim;
+      const oldTurret=Number.isFinite(p.turret)?p.turret:(Number.isFinite(e.turretFace)?e.turretFace:e.bodyFace);
+      e.turretFace=smoothAngleToward(oldTurret,aim,0.95*dt);
+      e.face=e.bodyFace;
+    }else if(mechIsSuit(e)){
+      // 강화복 보병은 포탑 없음: 몸 전체가 천천히 돌아 정면으로만 사격한다.
+      const oldBody=Number.isFinite(p.body)?p.body:(Number.isFinite(e.bodyFace)?e.bodyFace:aim);
+      const turn=(e.ev&&e.ev.kind==='shotgun')?3.2:4.2;
+      e.bodyFace=smoothAngleToward(oldBody,aim,turn*dt);
+      e.turretFace=e.bodyFace; e.face=e.bodyFace;
+    }
+  }
+};
+function tankTurretAligned(e){
+  const aim=Math.atan2(player.y-e.y,player.x-e.x);
+  const diff=angDiffAbs(mechTurretFace(e),aim);
+  const dist=Math.hypot(player.x-e.x,player.y-e.y);
+  const need=dist<220?0.18:0.28;
+  return diff<need;
+}
+const _fireEnemyShotTankAlignPatch=fireEnemyShot;
+fireEnemyShot=function(e,dx,dy){
+  const ev=e&&e.ev||{};
+  if(e && mechIsTank(e) && (ev.kind==='minigun' || ev.kind==='tank' || !ev.kind)){
+    if(!tankTurretAligned(e)){
+      // 포탑이 아직 못 따라왔으면 이번 발사는 취소하고 짧게 재조준.
+      e.fire=Math.min(e.fire||0.5,0.35);
+      if(typeof dbgCounter==='function') dbgCounter('tankAimHold');
+      return;
+    }
+  }
+  return _fireEnemyShotTankAlignPatch(e,dx,dy);
+};
+function drawSuitBody(e,r){
+  const ev=e.ev||{};
+  const shotgun=ev.kind==='shotgun';
+  const bodyCol=e.hit>0?'#fff':(shotgun?'#ff9c4a':'#74a8ff');
+  const armorCol=shotgun?'#3a3130':'#1f2632';
+  const shoulderCol=shotgun?'#ffd08a':'#dfe8ff';
+  if(shotgun){
+    // 불곰 느낌: 가로로 넓은 중형 강화복 + 짧고 굵은 산탄총
+    ctx.fillStyle=bodyCol; roundRect(-r*0.82,-r*0.58,r*1.38,r*1.16,8); ctx.fill();
+    ctx.fillStyle=armorCol; roundRect(-r*0.48,-r*0.36,r*0.56,r*0.72,6); ctx.fill();
+    ctx.fillStyle=shoulderCol; roundRect(-r*1.02,-r*0.52,r*0.34,r*0.44,5); ctx.fill(); roundRect(-r*1.02,r*0.08,r*0.34,r*0.44,5); ctx.fill();
+    ctx.fillStyle='#2b3038'; roundRect(-r*0.36,-r*0.78,r*0.30,r*0.34,5); ctx.fill(); roundRect(-r*0.36,r*0.44,r*0.30,r*0.34,5); ctx.fill();
+    ctx.fillStyle='#171a1f'; roundRect(r*0.00,-r*0.18,r*0.88,r*0.36,5); ctx.fill();
+    ctx.fillStyle='#ffcf7a'; roundRect(r*0.54,-r*0.12,r*0.30,r*0.24,4); ctx.fill();
+  }else{
+    // 마린 느낌: 작은 강화복 + 길고 얇은 돌격소총
+    ctx.fillStyle=bodyCol; roundRect(-r*0.58,-r*0.52,r*1.02,r*1.04,6); ctx.fill();
+    ctx.fillStyle=armorCol; roundRect(-r*0.34,-r*0.34,r*0.46,r*0.68,5); ctx.fill();
+    ctx.fillStyle=shoulderCol; roundRect(-r*0.74,-r*0.42,r*0.22,r*0.34,4); ctx.fill(); roundRect(-r*0.74,r*0.08,r*0.22,r*0.34,4); ctx.fill();
+    ctx.fillStyle='#2b3038'; roundRect(-r*0.25,-r*0.72,r*0.20,r*0.30,4); ctx.fill(); roundRect(-r*0.25,r*0.42,r*0.20,r*0.30,4); ctx.fill();
+    ctx.fillStyle='#20242d'; roundRect(r*0.02,-r*0.08,r*1.12,r*0.16,3); ctx.fill();
+  }
+  if(ev.kind==='grenade'){ ctx.fillStyle='#ff3a3a'; ctx.beginPath(); ctx.arc(-r*0.18,-r*0.72,5,0,7); ctx.fill(); ctx.strokeStyle='#fff'; ctx.stroke(); }
+}
+function drawSuitArmorOutline(e,r){
+  const st=armorStrokeStyle(e.type&&e.type.armor||0);
+  const shotgun=e.ev&&e.ev.kind==='shotgun';
+  ctx.save(); ctx.strokeStyle=st.c; ctx.lineWidth=st.w; if(st.dash) ctx.setLineDash(st.dash);
+  if(shotgun) roundRect(-r*0.88,-r*0.64,r*1.50,r*1.28,9);
+  else roundRect(-r*0.64,-r*0.58,r*1.14,r*1.16,7);
+  ctx.stroke();
+  if((e.type&&e.type.armor||0)>=3){ ctx.lineWidth=1.8; if(shotgun) roundRect(-r*0.96,-r*0.72,r*1.66,r*1.44,10); else roundRect(-r*0.72,-r*0.66,r*1.30,r*1.32,8); ctx.stroke(); }
+  ctx.restore();
+}
+const _drawEmpireBodyOutlineLocalSuitShapePatch=drawEmpireBodyOutlineLocal;
+drawEmpireBodyOutlineLocal=function(e,r){
+  if(e && mechIsSuit(e)) return drawSuitArmorOutline(e,r);
+  return _drawEmpireBodyOutlineLocalSuitShapePatch(e,r);
+};
+// 강화복에는 엔진 배기구 약점이 없다. 탱크/워커/차량/드론에만 유지한다.
+const _mechRearHitNoSuitPatch=mechRearHit;
+mechRearHit=function(e,hitDir){
+  if(e && mechIsSuit(e)) return false;
+  return _mechRearHitNoSuitPatch(e,hitDir);
+};
+
+
+
+// ===== 2026-07-02 final empire unit design refactor =====
+// 목적:
+// - 기계화 군단은 5종으로 정리: 돌격병, 화염 돌파병, 자폭드론, 전차, 워커.
+// - 화염 전차는 삭제하고, 화염 역할은 돌파병 강화복으로 이전.
+// - 이전처럼 보이는 한 부분만 고치는 방식이 아니라, 기계화 렌더링은 여기서 한 번에 최종 처리한다.
+// - 모든 장갑 테두리는 실제 몸체 Path를 그대로 stroke해서 몸체와 어긋나지 않게 한다.
+
+function empireSanitizeWeights(w){
+  const out={};
+  for(const k in (w||{})){
+    if(k==='suppressor') { out.assault=(out.assault||0)+w[k]; continue; }
+    if(k==='special') { out.droneEnemy=(out.droneEnemy||0)+w[k]*0.55; out.armored=(out.armored||0)+w[k]*0.45; continue; }
+    out[k]=(out[k]||0)+w[k];
+  }
+  return out;
+}
+const _pickKindBeforeEmpireDesignRefactor=pickKind;
+pickKind=function(w){
+  const f=(operationMeta&&operationMeta.faction)||(battleTheme&&battleTheme.faction)||'infected';
+  if(f==='empire') return _pickKindBeforeEmpireDesignRefactor(empireSanitizeWeights(w));
+  return _pickKindBeforeEmpireDesignRefactor(w);
+};
+for(const m of OPERATION_METAS||[]){ if(m&&m.faction==='empire'&&m.w) m.w=empireSanitizeWeights(m.w); }
+
+const _enemyVariantBeforeEmpireDesignRefactor=enemyVariant;
+enemyVariant=function(kind,t){
+  if(t && t.family==='assault'){
+    // 돌격병/돌파병만 실루엣으로 구분한다. 샷건 변종은 삭제하고 화염 돌파병으로 대체.
+    const flame=(difficulty>=3 && Math.random()<0.34);
+    return flame ? {kind:'flame', label:'화염 돌파병'} : {kind:'ar', label:'돌격병'};
+  }
+  if(t && t.family==='suppressor') return {kind:'ar', label:'돌격병'};
+  if(t && t.family==='armored') return {kind:'tank', label:'제국 돌격전차'};
+  if(t && t.family==='drone') return {kind:'suicide', label:'자폭드론'};
+  if(t && t.family==='walker') return {kind:'walker', label:'강습 워커'};
+  if(t && t.family==='special') return {kind:'suicide', label:'자폭드론'};
+  return _enemyVariantBeforeEmpireDesignRefactor(kind,t);
+};
+
+const _spawnEnemyBeforeEmpireDesignRefactor=spawnEnemy;
+spawnEnemy=function(kind,x,y,role,home,pg,squad){
+  _spawnEnemyBeforeEmpireDesignRefactor(kind,x,y,role,home,pg,squad);
+  const e=enemies[enemies.length-1];
+  if(!e||!isMechEnemy(e)) return;
+  const ev=e.ev||{};
+  if(e.type.family==='suppressor'){ e.type=ETYPE.assault; e.kind='assault'; e.ev={kind:'ar',label:'돌격병'}; }
+  if(e.type.family==='special'){ e.type=ETYPE.droneEnemy; e.kind='droneEnemy'; e.ev={kind:'suicide',label:'자폭드론'}; }
+  if(e.type.family==='armored') e.ev={kind:'tank',label:'제국 돌격전차'};
+  if(e.type.family==='assault' && ev.kind==='shotgun') e.ev={kind:'flame',label:'화염 돌파병'};
+  e.bodyFace=Number.isFinite(e.bodyFace)?e.bodyFace:(Number.isFinite(e.face)?e.face:Math.random()*Math.PI*2);
+  e.turretFace=Number.isFinite(e.turretFace)?e.turretFace:e.bodyFace;
+};
+
+function fillStrokeCurrentPath(fill,armor){
+  ctx.fillStyle=fill; ctx.fill();
+  const st=armorStrokeStyle(armor||0);
+  ctx.strokeStyle=st.c; ctx.lineWidth=st.w; if(st.dash) ctx.setLineDash(st.dash); else ctx.setLineDash([]);
+  ctx.stroke(); ctx.setLineDash([]);
+  if((armor||0)>=3){ ctx.lineWidth=1.6; ctx.strokeStyle=st.c; ctx.globalAlpha*=0.95; ctx.stroke(); ctx.globalAlpha/=0.95; }
+}
+function pathSuitMarine(r){ roundRect(-r*0.58,-r*0.52,r*1.02,r*1.04,6); }
+function pathSuitFlame(r){ roundRect(-r*0.92,-r*0.62,r*1.56,r*1.24,8); }
+function pathTankHull(r){ roundRect(-r*1.02,-r*0.62,r*2.04,r*1.24,10); }
+function pathWalkerTorso(r){ roundRect(-r*0.62,-r*0.50,r*1.12,r*1.00,9); }
+
+function drawBlueSensor(r){ ctx.fillStyle='#68cfff'; ctx.beginPath(); ctx.arc(r*0.35,0,Math.max(3,r*0.12),0,7); ctx.fill(); }
+function drawPowerPack(r,large){
+  ctx.fillStyle=large?'#4a2b22':'#2c3440';
+  roundRect(-r*(large?0.74:0.62),-r*(large?0.40:0.30),r*(large?0.20:0.16),r*(large?0.80:0.60),4); ctx.fill();
+  if(large){ ctx.fillStyle='#ff8a2a'; ctx.fillRect(-r*0.70,-r*0.24,r*0.09,r*0.48); }
+}
+function drawFinalMarineSuit(e,r){
+  const flame=e.ev&&e.ev.kind==='flame';
+  // 몸체 Path와 장갑 외곽선은 같은 Path를 쓴다.
+  if(flame){
+    pathSuitFlame(r); fillStrokeCurrentPath(e.hit>0?'#fff':'#ff9b42', e.type.armor);
+    ctx.fillStyle='#3b2c22'; roundRect(-r*0.55,-r*0.38,r*0.55,r*0.76,6); ctx.fill();
+    ctx.fillStyle='#ffd08a'; roundRect(-r*1.10,-r*0.54,r*0.30,r*0.45,5); ctx.fill(); roundRect(-r*1.10,r*0.09,r*0.30,r*0.45,5); ctx.fill();
+    drawPowerPack(r,true);
+    // 양팔 화염 노즐 + 호스
+    ctx.strokeStyle='#2a2020'; ctx.lineWidth=Math.max(3,r*0.11); ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(-r*0.18,-r*0.30); ctx.lineTo(r*0.28,-r*0.20); ctx.moveTo(-r*0.18,r*0.30); ctx.lineTo(r*0.28,r*0.20); ctx.stroke();
+    ctx.fillStyle='#1a1715'; roundRect(r*0.18,-r*0.28,r*0.78,r*0.20,4); ctx.fill(); roundRect(r*0.18,r*0.08,r*0.78,r*0.20,4); ctx.fill();
+    ctx.fillStyle='#ffcf4d'; ctx.beginPath(); ctx.arc(r*1.02,-r*0.18,Math.max(3,r*0.10),0,7); ctx.fill(); ctx.beginPath(); ctx.arc(r*1.02,r*0.18,Math.max(3,r*0.10),0,7); ctx.fill();
+  }else{
+    pathSuitMarine(r); fillStrokeCurrentPath(e.hit>0?'#fff':'#74a8ff', e.type.armor);
+    ctx.fillStyle='#1f2632'; roundRect(-r*0.34,-r*0.34,r*0.46,r*0.68,5); ctx.fill();
+    ctx.fillStyle='#dfe8ff'; roundRect(-r*0.74,-r*0.42,r*0.22,r*0.34,4); ctx.fill(); roundRect(-r*0.74,r*0.08,r*0.22,r*0.34,4); ctx.fill();
+    drawPowerPack(r,false);
+    ctx.fillStyle='#20242d'; roundRect(r*0.02,-r*0.08,r*1.12,r*0.16,3); ctx.fill();
+  }
+  drawBlueSensor(r);
+}
+function drawFinalTank(e,r){
+  // 궤도는 차체의 일부. 차체와 같은 회전 좌표계 안에서만 그린다.
+  ctx.fillStyle='#15181d'; roundRect(-r*1.16,-r*0.78,r*2.32,r*0.25,5); ctx.fill(); roundRect(-r*1.16,r*0.53,r*2.32,r*0.25,5); ctx.fill();
+  pathTankHull(r); fillStrokeCurrentPath(e.hit>0?'#fff':'#caa23b', e.type.armor);
+  ctx.fillStyle='rgba(120,80,25,.24)'; roundRect(-r*0.38,-r*0.34,r*0.70,r*0.68,7); ctx.fill();
+  drawRearVents(r,e); drawBlueSensor(r);
+}
+function drawFinalTankTurret(e,r){
+  ctx.fillStyle='#626a75'; roundRect(-r*0.26,-r*0.30,r*0.66,r*0.60,7); ctx.fill();
+  ctx.fillStyle='#171a1f'; roundRect(r*0.18,-r*0.09,r*1.25,r*0.18,4); ctx.fill();
+  if(e.muzzleT>0){ ctx.fillStyle='#ffb13b'; ctx.beginPath(); ctx.arc(r*1.48,0,r*0.18,0,7); ctx.fill(); }
+}
+function drawFinalWalker(e,r){
+  ctx.strokeStyle='#2c3138'; ctx.lineWidth=Math.max(5,r*0.12); ctx.lineCap='round'; ctx.beginPath();
+  ctx.moveTo(-r*0.20,r*0.42); ctx.lineTo(-r*0.76,r*1.02); ctx.moveTo(r*0.10,r*0.42); ctx.lineTo(r*0.68,r*1.02);
+  ctx.moveTo(-r*0.20,-r*0.42); ctx.lineTo(-r*0.76,-r*1.02); ctx.moveTo(r*0.10,-r*0.42); ctx.lineTo(r*0.68,-r*1.02); ctx.stroke();
+  pathWalkerTorso(r); fillStrokeCurrentPath(e.hit>0?'#fff':'#7f8a96', e.type.armor);
+  drawRearVents(r,e); drawBlueSensor(r);
+}
+function drawFinalWalkerTurret(e,r){
+  ctx.fillStyle='#3c454e'; roundRect(-r*0.30,-r*0.26,r*0.70,r*0.52,7); ctx.fill();
+  ctx.fillStyle='#16191f'; roundRect(r*0.24,-r*0.08,r*0.95,r*0.16,4); ctx.fill();
+}
+function drawFinalQuadDrone(e,r){
+  const t=performance.now()*0.018;
+  ctx.save(); ctx.rotate(mechBodyFace(e));
+  ctx.strokeStyle='#9de9ff'; ctx.lineWidth=Math.max(2,r*0.08); ctx.beginPath(); ctx.moveTo(-r*0.55,-r*0.55); ctx.lineTo(r*0.55,r*0.55); ctx.moveTo(-r*0.55,r*0.55); ctx.lineTo(r*0.55,-r*0.55); ctx.stroke();
+  ctx.fillStyle=e.ev&&e.ev.kind==='suicide'?'#ff5a4d':'#4fd6ff'; roundRect(-r*0.34,-r*0.28,r*0.68,r*0.56,5); ctx.fill();
+  for(const sx of [-1,1]) for(const sy of [-1,1]){
+    const x=sx*r*0.62,y=sy*r*0.62; ctx.save(); ctx.translate(x,y); ctx.rotate(t*(sx*sy));
+    ctx.strokeStyle='#dff8ff'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(-r*0.18,0); ctx.lineTo(r*0.18,0); ctx.moveTo(0,-r*0.18); ctx.lineTo(0,r*0.18); ctx.stroke();
+    ctx.restore(); ctx.strokeStyle='#a8f2ff'; ctx.beginPath(); ctx.arc(x,y,r*0.20,0,7); ctx.stroke();
+  }
+  if(e.ev&&e.ev.kind==='suicide'){
+    ctx.fillStyle=(Math.sin(performance.now()*0.018)>0?'#ff2828':'#ffb13b'); ctx.font=`${Math.max(10,r*0.45)}px sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('🧨',0,0);
+  }else drawBlueSensor(r);
+  ctx.restore();
+}
+
+const _drawEnemyBeforeEmpireFinalDesignRefactor=drawEnemy;
+drawEnemy=function(e){
+  if(!e||!e.alive) return;
+  if(!empireUnit(e)){ _drawEnemyBeforeEmpireFinalDesignRefactor(e); return; }
+  const r=e.r*(e.vscale||1);
+  if(!e.aggro && Math.hypot(e.x-player.x,e.y-player.y)<1000){ ctx.save(); ctx.globalAlpha=0.05; ctx.fillStyle='#ffe14d'; ctx.beginPath(); ctx.moveTo(e.x,e.y); ctx.arc(e.x,e.y,e.vis*smokeVisionMul(e),e.face-e.fov,e.face+e.fov); ctx.closePath(); ctx.fill(); ctx.restore(); }
+  ctx.fillStyle='rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(e.x,e.y+r*0.72,r*1.05,r*0.42,0,0,7); ctx.fill();
+  if(mechIsSuit(e)){
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(mechBodyFace(e)); drawFinalMarineSuit(e,r); ctx.restore();
+  }else if(mechIsTank(e)){
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(mechBodyFace(e)); drawFinalTank(e,r); ctx.restore();
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(mechTurretFace(e)); drawFinalTankTurret(e,r); ctx.restore();
+  }else if(mechIsWalker(e)){
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(mechBodyFace(e)); drawFinalWalker(e,r); ctx.restore();
+    ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(mechTurretFace(e)); drawFinalWalkerTurret(e,r); ctx.restore();
+  }else if(e.kind==='droneEnemy'||e.type.family==='drone'){
+    ctx.save(); ctx.translate(e.x,e.y); drawFinalQuadDrone(e,r); ctx.restore();
+  }else{
+    _drawEnemyBeforeEmpireFinalDesignRefactor(e); return;
+  }
+  drawEmpireStatusAndIcons(e,r);
+};
+
+// 화염 돌파병의 사격 템포와 명칭 정리. 탱크 화염 변종은 더 이상 생성되지 않는다.
+const _fireEnemyShotBeforeEmpireFinalDesignRefactor=fireEnemyShot;
+fireEnemyShot=function(e,dx,dy){
+  if(e&&mechIsSuit(e)&&e.ev&&e.ev.kind==='flame'){
+    // 화염은 updateEnemies의 enemyFlame에서 지속 처리하므로 즉시 탄환 생성은 하지 않는다.
+    e.muzzleT=0.12; return;
+  }
+  return _fireEnemyShotBeforeEmpireFinalDesignRefactor(e,dx,dy);
+};
+
+
+// ===== 2026-07-02 tank artillery telegraph + cadence balance patch =====
+// 탱크 포격은 범위 공격이므로 즉시 탄을 쏘지 않고, 먼저 목표 위치/폭발 범위를 명확히 경고한다.
+// 경고 후 빠른 포탄이 날아가 해당 위치에서 폭발한다. 플레이어는 발사 전에 피할 시간을 얻고,
+// 발사 이후에는 포탄 속도가 빨라져 공격 리듬이 더 명확해진다.
+let tankShellTelegraphs=[];
+function tankShellMuzzle(e){
+  const a=mechTurretFace(e);
+  const r=(e.r||50)*(e.vscale||1);
+  return {x:e.x+Math.cos(a)*r*1.72, y:e.y+Math.sin(a)*r*1.72, a};
+}
+function createTankShellTelegraph(e,tx,ty){
+  if(!e || !e.alive) return;
+  // 같은 탱크가 이미 조준 중이면 새 포격 예약을 만들지 않는다.
+  if(tankShellTelegraphs.some(t=>t.owner===e && !t.done)) return;
+  const lead=0.35;
+  const vx=player.velX||0, vy=player.velY||0;
+  const gx=Math.max(WALL+60,Math.min(WORLD.w-WALL-60,tx + vx*lead));
+  const gy=Math.max(WALL+60,Math.min(WORLD.h-WALL-60,ty + vy*lead));
+  const dist=Math.hypot(gx-e.x,gy-e.y);
+  const warn=dist<360 ? 1.55 : 1.25; // 가까울수록 더 오래 보여줘 회피 가능성 확보
+  tankShellTelegraphs.push({owner:e,x:gx,y:gy,r:58,life:warn,t:0,done:false,color:'#ffb13b'});
+  e.fire=Math.max(e.fire||0, warn+4.8+Math.random()*1.8); // 발사 텀 증가
+  if(typeof dbgCounter==='function') dbgCounter('tankTelegraph');
+}
+function launchTelegraphedTankShell(t){
+  const e=t.owner;
+  if(!e || !e.alive) return;
+  const m=tankShellMuzzle(e);
+  const d=Math.hypot(t.x-m.x,t.y-m.y)||1;
+  missiles.push({
+    x:m.x,y:m.y,tx:t.x,ty:t.y,
+    spd:1180*DIFF.bulletMul,
+    dmg:22,pen:2,radius:t.r,
+    enemy:true,color:'#ffb13b',tankShell:true,tankBomb:true
+  });
+  e.muzzleT=0.14;
+  shake=Math.max(shake,7);
+  sfx('boom');
+}
+function updateTankShellTelegraphs(dt){
+  for(const t of tankShellTelegraphs){
+    if(t.done) continue;
+    if(!t.owner || !t.owner.alive){ t.done=true; continue; }
+    t.t+=dt; t.life-=dt;
+    if(t.life<=0){ launchTelegraphedTankShell(t); t.done=true; }
+  }
+  tankShellTelegraphs=tankShellTelegraphs.filter(t=>!t.done && t.t<3.5);
+}
+function drawTankShellTelegraphs(){
+  const now=performance.now();
+  for(const t of tankShellTelegraphs){
+    if(t.done) continue;
+    const pulse=0.5+0.5*Math.sin(now/90);
+    ctx.save();
+    ctx.globalAlpha=0.16+0.10*pulse; ctx.fillStyle='#ff4b30'; ctx.beginPath(); ctx.arc(t.x,t.y,t.r,0,7); ctx.fill();
+    ctx.globalAlpha=0.82; ctx.strokeStyle='#ff4b30'; ctx.lineWidth=3; ctx.setLineDash([10,6]); ctx.beginPath(); ctx.arc(t.x,t.y,t.r,0,7); ctx.stroke(); ctx.setLineDash([]);
+    ctx.globalAlpha=0.95; ctx.strokeStyle='#ffd45d'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(t.x-t.r*0.45,t.y); ctx.lineTo(t.x+t.r*0.45,t.y); ctx.moveTo(t.x,t.y-t.r*0.45); ctx.lineTo(t.x,t.y+t.r*0.45); ctx.stroke();
+    ctx.font='bold 16px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.lineWidth=4; ctx.strokeStyle='#1a0a0a'; ctx.fillStyle='#ff8a8a';
+    ctx.strokeText('포격 경고',t.x,t.y-t.r-10); ctx.fillText('포격 경고',t.x,t.y-t.r-10);
+    ctx.restore();
+  }
+}
+const _updateEnemiesTankTelegraphPatch=updateEnemies;
+updateEnemies=function(dt){
+  _updateEnemiesTankTelegraphPatch(dt);
+  updateTankShellTelegraphs(dt);
+};
+// 기존 탱크 포탄 발사 함수는 즉시 포탄 생성 대신 경고 예약으로 변경한다.
+launchEnemyTankShell=function(e,tx,ty){
+  createTankShellTelegraph(e,tx,ty);
+};
+const _drawThrowGhostTankTelegraphPatch=drawThrowGhost;
+drawThrowGhost=function(){
+  drawTankShellTelegraphs();
+  _drawThrowGhostTankTelegraphPatch();
+};
+// 탱크 포격이 착탄하면 적이 아니라 플레이어/아군도 피해를 받는 전장 포탄으로 처리한다.
+// 기존 미사일 루프의 aoeBlast는 적 대상 처리 위주라, 탱크 포탄에 한해 별도 피아 피해를 보강한다.
+const _aoeBlastTankShellFriendlyPatch=aoeBlast;
+aoeBlast=function(x,y,r,dmg,pen){
+  _aoeBlastTankShellFriendlyPatch(x,y,r,dmg,pen);
+  // 탱크 포격/전장 폭발의 플레이어 피해는 한방 사망 방지를 위해 낮게 제한한다.
+};
+// 탱크 사격 쿨타임이 기존 armored/minigun 규칙으로 너무 자주 잡히는 문제를 보정한다.
+const _fireEnemyShotTankCadencePatch=fireEnemyShot;
+fireEnemyShot=function(e,dx,dy){
+  if(e && mechIsTank(e)){
+    const ev=e.ev||{};
+    if(ev.kind==='minigun' || ev.kind==='tank' || !ev.kind){
+      if(!tankTurretAligned(e)){
+        e.fire=Math.max(e.fire||0,0.45);
+        if(typeof dbgCounter==='function') dbgCounter('tankAimHold');
+        return;
+      }
+      createTankShellTelegraph(e,player.x,player.y);
+      e.fire=5.2+Math.random()*2.1;
+      return;
+    }
+  }
+  return _fireEnemyShotTankCadencePatch(e,dx,dy);
+};
+// 최신 탱크 포탄은 적중 시 한방 즉사하지 않도록 폭발 피해를 조정한다.
+const _updateMissileTankDamagePatch=updateEnemies;
+// 화염 중장갑 변종은 현재 적 리스트/설명에 없는 변종이라, 기존 armored 변종을 탱크/미사일/미니건 계열로 정규화한다.
+const _pickArmoredVariantBeforeNoFlameTank=pickArmoredVariant;
+pickArmoredVariant=function(){
+  const v=_pickArmoredVariantBeforeNoFlameTank();
+  if(v && v.kind==='flame') return {kind:'minigun', label:'중장갑 미니건'};
+  return v;
+};
 </script>
 </body>
 </html>
+
+
