@@ -1271,7 +1271,7 @@ function activeGun(){ const sl=slots[activeSlot]; return (sl.type==="gun"&&sl.wi
 
 let enemies=[], bullets=[], pods=[], craters=[], grenades=[], turrets=[], missiles=[], dropships=[];
 let barriers=[], smokeFields=[], empBursts=[], gaebolgFx=[];
-let beacons=[], beaconThrows=[], bombardments=[], firePatches=[], beams=[], fallingBombs=[];  // 스트라타젬 신호기
+let beacons=[], beaconThrows=[], bombardments=[], firePatches=[], beams=[], fallingBombs=[], battlecruiserPasses=[];  // 스트라타젬 신호기
 let scorches=[], debris=[], flameGroundCD=0;   // 그을린 자국 / 바닥에 버려진 장비 / 화염 잔불 생성 타이머
 let heldBeacon=-1;            // 현재 손에 든 신호기 인덱스(-1=없음)
 let particles=[], depots=[], crates=[];  // 피격 FX / 서플라이 디폿 / 보급 상자
@@ -1445,7 +1445,7 @@ function resetGame(){
   turretVariant=0; TACTICALS.forEach(t=>{ t.charges=t.max; t.rt=0; });
   enemies=[]; bullets=[]; pods=[]; craters=[]; grenades=[]; turrets=[]; missiles=[]; dropships=[];
   barriers=[]; smokeFields=[]; empBursts=[]; gaebolgFx=[];
-  beacons=[]; beaconThrows=[]; bombardments=[]; firePatches=[]; beams=[]; fallingBombs=[]; heldBeacon=-1;
+  beacons=[]; beaconThrows=[]; bombardments=[]; firePatches=[]; beams=[]; fallingBombs=[]; battlecruiserPasses=[]; heldBeacon=-1;
   scorches=[]; debris=[]; flameGroundCD=0; pops=[]; rods=[]; graves=[]; bouncers=[]; lastDelivery=null;
   particles=[]; flare=null; flareTimer=-1; reinforceActive=false; reinforceCD=0; kills=0;
   nextSquad=1; squadProp={}; rings=[]; gunfireT=0; shake=0; barricadeCD=0; crates=[]; booms=[];
@@ -1600,7 +1600,7 @@ function renderBuy(){
   } else if(buyStage==="bomb"){
     buyTitle.textContent="📡 폭격 신호기 구매";
     buySub.textContent="구매 시 1회용 신호기 획득 → [F]로 수류탄처럼 투척. [Backspace] 뒤로";
-    const specs=["3초 후 10초간 광역 융단폭격 · 중장갑 관통","하늘에서 강하 후 스카이콩콩처럼 반복 타격 · 대전차 장갑","융단폭격 + 30초 화염 지대 · 일반 장갑","EMP 폭격 · 드론/워커/기계화 병력 일시 무력화"];
+    const specs=["차원도약 함선 그림자 등장 → 노즈다운 고폭탄 투하 · 중장갑 관통","하늘에서 강하 후 스카이콩콩처럼 반복 타격 · 대전차 장갑","차원도약 함선 그림자 등장 → 노즈다운 네이팜 캐니스터 · 화염 지대","EMP 폭격 · 드론/워커/기계화 병력 일시 무력화"];
 
     buyList.innerHTML=BOMB_TYPES.map((b,i)=>{
       const cant=player.credits<BOMB_COST[i]?"cant":"";
@@ -2682,9 +2682,23 @@ function damageDepotsAt(x,y,r,dmg){
 }
 
 //---------------- 폭격 스트라타젬 ----------------
+function spawnBattlecruiserPass(x,y,type,delay,dur){   // DELIVERY TO DIE 시그니처 폭격: 거대 함선 그림자가 차원도약으로 상공에 도착
+  const ang=-0.18+Math.random()*0.36;
+  const life=Math.max(3.4,(delay||0)+(dur||0)+1.45);
+  battlecruiserPasses.push({x,y,type,t:0,life,ang,
+    cx:x-120+Math.random()*90, cy:y-210+Math.random()*70,
+    driftX:Math.cos(ang)*120, driftY:Math.sin(ang)*80,
+    color:type===2?"#ff5a2e":"#8fd8ff", seed:Math.random()*999});
+}
+function updateBattlecruiserPasses(dt){
+  for(const s of battlecruiserPasses){ s.t+=dt; if(s.t>=s.life) s.dead=true; }
+  battlecruiserPasses=battlecruiserPasses.filter(s=>!s.dead);
+}
 function dropBomb(b,T){   // 하늘에서 떨어지는 폭탄 생성 (착탄 시 폭발)
   const a=Math.random()*7, d=Math.random()*T.area, x=b.x+Math.cos(a)*d, y=b.y+Math.sin(a)*d;
-  fallingBombs.push({x,y,z:540+Math.random()*160,vz:820,blast:T.blast,dmg:T.dmg,pen:T.pen,fireR:T.fireR||0,fireLife:T.fireLife||0});
+  const type=(BOMB_TYPES.indexOf(T)>=0)?BOMB_TYPES.indexOf(T):b.type;
+  const shipDrop=(type===0||type===2);
+  fallingBombs.push({x,y,type,shipDrop,z:shipDrop?760+Math.random()*160:540+Math.random()*160,vz:shipDrop?1250:820,blast:T.blast,dmg:T.dmg,pen:T.pen,fireR:T.fireR||0,fireLife:T.fireLife||0,spin:(Math.random()-0.5)*0.2});
 }
 function impactBomb(fb){
   craters.push({x:fb.x,y:fb.y,t:0.45,r:fb.blast}); sfx("boom"); boomFx(fb.x,fb.y,fb.blast);
@@ -2805,9 +2819,11 @@ function updateBombs(dt){
         pushLog(`✈️ ${A.name} 공습 요청 — 1초 후 도착!`,A.color); if(host){ host.tagT=99; pushLog("🎯 적에게 신호기 부착 — 표적과 함께 이동!","#ff8a3a"); } sfx("alert"); }
       else { const T=BOMB_TYPES[b.variant];
         bombardments.push({type:b.variant,x:b.tx,y:b.ty,delay:T.delay,dur:T.dur||0,cd:0,done:false,host});
+        if(b.variant===0||b.variant===2) spawnBattlecruiserPass(b.tx,b.ty,b.variant,T.delay,T.dur||0);
         pushLog(`📡 ${T.name} 신호기 작동 — ${T.delay}초 후 폭격!`,T.color); if(host){ host.tagT=99; pushLog("🎯 적에게 신호기 부착 — 표적과 함께 이동!","#ff8a3a"); } } } }
   beaconThrows=beaconThrows.filter(b=>!b.landed);
   if(lastDelivery) lastDelivery.life-=dt;
+  updateBattlecruiserPasses(dt);
   // 낙하 폭탄 (하늘 → 착탄)
   for(const fb of fallingBombs){ fb.z-=fb.vz*dt; if(fb.z<=0 && !fb.hit){ fb.hit=true; impactBomb(fb); } }
   fallingBombs=fallingBombs.filter(fb=>!fb.hit);
@@ -3531,6 +3547,7 @@ function render(){
   for(const s of dropships) drawDropship(s);
   if(flare) drawFlare(flare);
   for(const b of bombardments) drawBombMarker(b);
+  drawBattlecruiserPasses();
   for(const fb of fallingBombs) drawFallingBomb(fb);
   drawAirstrikes();
   for(const bm of beams) drawBeam(bm);
@@ -3933,13 +3950,170 @@ function drawFirePatch(f){
 }
 function drawBeacon(b){ ctx.fillStyle="rgba(0,0,0,.3)"; ctx.beginPath(); ctx.ellipse(b.x,b.y,5,2.5,0,0,7); ctx.fill();
   ctx.fillStyle=b.color; ctx.beginPath(); ctx.arc(b.x,b.y-b.z,5,0,7); ctx.fill(); ctx.strokeStyle="#fff"; ctx.lineWidth=1.5; ctx.stroke(); }
-function drawFallingBomb(fb){   // 낙하산 택배 상자(전장 배송)
-  ctx.fillStyle="rgba(0,0,0,.3)"; const sh=6+10*(1-Math.min(1,fb.z/600)); ctx.beginPath(); ctx.ellipse(fb.x,fb.y,sh,sh*0.5,0,0,7); ctx.fill();
+function drawBattlecruiserShadowShape(color,alpha,glitch){
+  // DELIVERY TO DIE 시그니처 전쟁 배송함 실루엣
+  // 목표: 단순 타원/비행선이 아니라, 거대 후방 엔진 + 좌우 무장 암 + 넓은 전방 함교가 읽히는 배틀크루저풍 그림자.
+  ctx.save();
+  const phase=Math.max(0,Math.min(1,glitch||0));
+  const shard=phase>0 ? (Math.sin(performance.now()/46)*phase*10) : 0;
+
+  // 1) 전체 어둠 베이스: 타원이 아니라 십자형/함체형 실루엣으로 구성
+  ctx.globalAlpha=alpha*0.58; ctx.fillStyle="#010307";
+
+  // 중앙 장갑 주함체(후방은 두껍고 전방으로 갈수록 넓은 함교 블록)
+  ctx.beginPath();
+  ctx.moveTo(-690,-66); ctx.lineTo(-520,-108); ctx.lineTo(-300,-96); ctx.lineTo(-120,-56);
+  ctx.lineTo(170,-74); ctx.lineTo(430,-126); ctx.lineTo(690,-92); ctx.lineTo(790,-34);
+  ctx.lineTo(735,0); ctx.lineTo(790,34); ctx.lineTo(690,92); ctx.lineTo(430,126); ctx.lineTo(170,74);
+  ctx.lineTo(-120,56); ctx.lineTo(-300,96); ctx.lineTo(-520,108); ctx.lineTo(-690,66); ctx.lineTo(-760,0);
+  ctx.closePath(); ctx.fill();
+
+  // 전방 함교/선수: 이미지 참고처럼 앞부분이 단순 뾰족하지 않고 넓고 묵직하게 보이도록 함
+  ctx.globalAlpha=alpha*0.72; ctx.fillStyle="#000205";
+  ctx.beginPath();
+  ctx.moveTo(310,-92); ctx.lineTo(590,-164); ctx.lineTo(790,-110); ctx.lineTo(850,-42);
+  ctx.lineTo(800,0); ctx.lineTo(850,42); ctx.lineTo(790,110); ctx.lineTo(590,164); ctx.lineTo(310,92);
+  ctx.lineTo(420,38); ctx.lineTo(500,0); ctx.lineTo(420,-38); ctx.closePath(); ctx.fill();
+
+  // 좌우 장거리 무장 암: 배틀크루저의 십자형 인상을 만드는 핵심 요소
+  ctx.globalAlpha=alpha*0.64;
+  ctx.beginPath(); ctx.moveTo(-420,-80); ctx.lineTo(-160,-255); ctx.lineTo(175,-300); ctx.lineTo(360,-242); ctx.lineTo(95,-120); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-420,80); ctx.lineTo(-160,255); ctx.lineTo(175,300); ctx.lineTo(360,242); ctx.lineTo(95,120); ctx.closePath(); ctx.fill();
+  // 무장 암 끝 포드
+  ctx.globalAlpha=alpha*0.72;
+  for(const yy of [-285,285]){
+    ctx.save(); ctx.translate(238,yy); ctx.rotate(yy<0?-0.15:0.15);
+    ctx.beginPath(); ctx.moveTo(-88,-28); ctx.lineTo(54,-38); ctx.lineTo(118,0); ctx.lineTo(54,38); ctx.lineTo(-88,28); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  // 후방 거대 엔진 3기: 실루엣에서 제일 먼저 읽히는 포인트
+  ctx.globalAlpha=alpha*0.84; ctx.fillStyle="#000000";
+  roundRect(-830,-156,215,92,34); ctx.fill();
+  roundRect(-830,64,215,92,34); ctx.fill();
+  roundRect(-885,-46,245,92,36); ctx.fill();
+  // 엔진 노즐 미광: 그림자 속에서만 살짝 읽히도록 과하지 않게
+  ctx.globalAlpha=alpha*0.20; ctx.fillStyle=color;
+  for(const yy of [-110,0,110]){ ctx.beginPath(); ctx.ellipse(-880,yy,48,18,0,0,7); ctx.fill(); }
+
+  // 중앙 배송 컨테이너/투하 베이: DELIVERY TO DIE만의 전쟁 배송함 정체성
+  ctx.globalAlpha=alpha*0.34; ctx.fillStyle="#070a0f";
+  for(let i=0;i<4;i++){ roundRect(-155+i*95,-36,74,72,12); ctx.fill(); }
+  ctx.globalAlpha=alpha*0.22; ctx.fillStyle=color;
+  for(let i=0;i<5;i++){ roundRect(-215+i*105,-8,60,16,5); ctx.fill(); }
+
+  // 장갑판 음영 라인: 타원처럼 뭉개지지 않도록 각진 전함 느낌 보강
+  ctx.globalAlpha=alpha*0.18; ctx.strokeStyle="#000"; ctx.lineWidth=12;
+  ctx.beginPath(); ctx.moveTo(-520,-108); ctx.lineTo(-150,-50); ctx.lineTo(320,-92); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-520,108); ctx.lineTo(-150,50); ctx.lineTo(320,92); ctx.stroke();
+  ctx.lineWidth=7; ctx.strokeStyle=color; ctx.globalAlpha=alpha*0.08;
+  ctx.beginPath(); ctx.moveTo(-400,0); ctx.lineTo(520,0); ctx.stroke();
+
+  // 차원도약/순간이동: 워프링 없이, 선체 절편이 어긋나며 재조립되는 느낌
+  if(phase>0.015){
+    ctx.save();
+    ctx.globalCompositeOperation="lighter";
+    // 선체 조각이 시간차로 맞물리는 스캔 슬라이스
+    ctx.strokeStyle=color; ctx.lineWidth=5;
+    for(let i=0;i<13;i++){
+      const yy=-290+i*48;
+      const k=(i%2?1:-1)*(32+phase*110) + shard*(i%3-1);
+      const a=alpha*phase*(0.18+0.05*(i%3));
+      ctx.globalAlpha=a;
+      ctx.beginPath(); ctx.moveTo(-760+k,yy); ctx.lineTo(770-k*0.35,yy+10*Math.sin(i+performance.now()/90)); ctx.stroke();
+    }
+    // 순간이동 잔상 블록: 단순 페이드가 아니라 일부 부품이 먼저/나중에 나타남
+    ctx.fillStyle=color;
+    for(let i=0;i<10;i++){
+      ctx.globalAlpha=alpha*phase*(0.10+0.04*Math.sin(i));
+      const x=-700+i*160+(i%2?70:-60)*phase;
+      const y=-210+(i%5)*105;
+      roundRect(x,y,95+30*(i%3),12,6); ctx.fill();
+    }
+    // 함선 외곽이 잠깐 두 번 보이는 차원도약 잔상
+    ctx.globalAlpha=alpha*phase*0.20; ctx.strokeStyle=color; ctx.lineWidth=9;
+    ctx.beginPath(); ctx.moveTo(-760+phase*35,0); ctx.lineTo(-520,-108); ctx.lineTo(430,-126); ctx.lineTo(850,-42); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-760-phase*35,0); ctx.lineTo(-520,108); ctx.lineTo(430,126); ctx.lineTo(850,42); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+function drawBattlecruiserPasses(){
+  for(const s of battlecruiserPasses){
+    const inDur=0.98, outDur=0.92;
+    const inP=Math.max(0,Math.min(1,s.t/inDur));
+    const outP=Math.max(0,Math.min(1,(s.life-s.t)/outDur));
+    const fadeIn=inP*inP*(3-2*inP), fadeOut=outP*outP*(3-2*outP);
+    const stable=Math.min(fadeIn,fadeOut);
+    const glitch=(s.t<inDur)?(1-fadeIn):((s.life-s.t)<outDur?(1-fadeOut):0);
+    const driftK=Math.max(0,Math.min(1,(s.t-inDur)/(Math.max(0.001,s.life-inDur-outDur))));
+    const cx=s.cx+s.driftX*(driftK-0.5)*0.45, cy=s.cy+s.driftY*(driftK-0.5)*0.45;
+    ctx.save();
+    // 워프링은 제거. 대신 상공의 거대한 질량이 차원도약으로 들어오며 광량이 눌리는 느낌만 아주 약하게 준다.
+    if(glitch>0){ ctx.globalAlpha=0.035*glitch; ctx.fillStyle=s.color; ctx.fillRect(cam.x,cam.y,W/camZoom(),H/camZoom()); }
+    ctx.translate(cx,cy); ctx.rotate(s.ang);
+    // 등장 시에는 세로로 살짝 압축된 그림자가 펼쳐지고, 퇴장 시에는 반대로 접히며 순간이동한다.
+    const squash=1 - glitch*0.20*Math.abs(Math.sin((s.t+s.seed)*18));
+    const spread=1 + glitch*0.05*Math.sin((s.t+s.seed)*29);
+    ctx.scale(spread,squash);
+    // 거대 그림자 베이스도 함선 실루엣과 같은 방향으로. 타원은 보조 음영으로만 약하게 사용한다.
+    ctx.globalAlpha=0.055*stable; ctx.fillStyle="#010306"; ctx.beginPath(); ctx.ellipse(0,0,900,330,0,0,7); ctx.fill();
+    drawBattlecruiserShadowShape(s.color,0.34*stable,glitch);
+    // 안정 상태에서도 엔진부 저주파 존재감: 실제 함선은 안 보이고, 그림자 속 엔진 미광만 아주 약하게 맥동.
+    if(stable>0.25){
+      ctx.globalCompositeOperation="lighter";
+      const pulse=0.45+0.55*Math.sin(performance.now()/180+s.seed);
+      ctx.globalAlpha=0.035*stable*pulse; ctx.fillStyle=s.color;
+      for(const yy of [-110,0,110]){ ctx.beginPath(); ctx.ellipse(-880,yy,70,26,0,0,7); ctx.fill(); }
+      ctx.globalCompositeOperation="source-over";
+    }
+    // 차원도약 잔상: 서로 다른 위치의 절편이 겹치며 재조립/분해되는 느낌
+    if(glitch>0.02){
+      ctx.globalCompositeOperation="lighter";
+      ctx.save(); ctx.translate(30*glitch,-18*glitch); drawBattlecruiserShadowShape(s.color,0.11*glitch,glitch); ctx.restore();
+      ctx.save(); ctx.translate(-55*glitch,28*glitch); drawBattlecruiserShadowShape("#ffffff",0.045*glitch,glitch*0.9); ctx.restore();
+    }
+    ctx.restore();
+  }
+}
+function drawFallingBomb(fb){   // 배틀크루저 투하 탄두: 꼬리는 하늘, 탄두는 지면을 향하는 노즈다운 형태
+  const t=Math.max(0,Math.min(1,1-fb.z/900));
+  ctx.fillStyle="rgba(0,0,0,.36)"; const sh=8+26*t; ctx.beginPath(); ctx.ellipse(fb.x,fb.y,sh,sh*0.48,0,0,7); ctx.fill();
   const by=fb.y-fb.z;
-  if(fb.z>40){ ctx.fillStyle="#e8554d"; ctx.beginPath(); ctx.arc(fb.x,by-13,11,Math.PI,0); ctx.closePath(); ctx.fill();   // 낙하산
-    ctx.strokeStyle="#bbb"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(fb.x-10,by-13); ctx.lineTo(fb.x-5,by-5); ctx.moveTo(fb.x+10,by-13); ctx.lineTo(fb.x+5,by-5); ctx.stroke(); }
-  ctx.fillStyle="#caa06a"; ctx.fillRect(fb.x-7,by-7,14,14); ctx.strokeStyle="#15171c"; ctx.lineWidth=1.6; ctx.strokeRect(fb.x-7,by-7,14,14);   // 택배 상자
-  ctx.strokeStyle="#7a5a35"; ctx.beginPath(); ctx.moveTo(fb.x,by-7); ctx.lineTo(fb.x,by+7); ctx.moveTo(fb.x-7,by); ctx.lineTo(fb.x+7,by); ctx.stroke();   // 테이프
+  if(fb.shipDrop){
+    ctx.save(); ctx.translate(fb.x,by);
+    const wobble=0.04*Math.sin(performance.now()/150+fb.x*0.01)+(fb.spin||0)*0.20;
+    ctx.rotate(wobble);   // y+ 방향이 지면. 아래쪽이 노즈, 위쪽이 꼬리.
+    // 낙하 속도선: 꼬리 쪽(위)에 남아, 탄두가 아래로 꽂히는 방향을 명확히 한다.
+    ctx.globalAlpha=0.24; ctx.strokeStyle=fb.type===2?"rgba(255,120,30,.72)":"rgba(200,225,255,.58)"; ctx.lineWidth=3;
+    for(let i=0;i<4;i++){ const ox=-9+i*6; ctx.beginPath(); ctx.moveTo(ox,-92-i*8); ctx.lineTo(ox*0.45,-36); ctx.stroke(); }
+    ctx.globalAlpha=1;
+    if(fb.type===2){   // 네이팜: 긴 연료 캐니스터. 꼬리/화염은 위, 무거운 탄두는 아래.
+      // 후방 꼬리날개(상단)
+      ctx.fillStyle="#14100e";
+      ctx.beginPath(); ctx.moveTo(-10,-31); ctx.lineTo(-19,-50); ctx.lineTo(-4,-36); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(10,-31); ctx.lineTo(19,-50); ctx.lineTo(4,-36); ctx.closePath(); ctx.fill();
+      ctx.fillStyle="#3b2822"; roundRect(-10,-34,20,62,8); ctx.fill(); ctx.strokeStyle="#111318"; ctx.lineWidth=2; ctx.stroke();
+      ctx.fillStyle="#ff5a2e"; ctx.fillRect(-10,-5,20,14); ctx.fillStyle="#ffb02e"; ctx.fillRect(-7,-25,14,8);
+      // 아래쪽 노즈: 땅을 향해 박히는 부분
+      ctx.fillStyle="#221410"; ctx.beginPath(); ctx.moveTo(-10,22); ctx.quadraticCurveTo(0,45,10,22); ctx.closePath(); ctx.fill();
+      // 꼬리 쪽 점화 불꽃(위쪽) - 아래에 불꽃이 붙어 로켓처럼 보이는 문제 방지
+      ctx.globalAlpha=0.70; ctx.fillStyle="#ff7a1f"; ctx.beginPath(); ctx.moveTo(0,-57); ctx.lineTo(-7,-38); ctx.lineTo(7,-38); ctx.closePath(); ctx.fill();
+      ctx.globalAlpha=0.42; ctx.fillStyle="#ffcf6a"; ctx.beginPath(); ctx.arc(0,-45,5,0,7); ctx.fill(); ctx.globalAlpha=1;
+    } else {           // 고폭탄: 항공폭탄. 아래쪽 노즈가 가장 진하고 뾰족하게 보인다.
+      // 꼬리날개(상단)
+      ctx.fillStyle="#657080"; ctx.fillRect(-15,-36,30,8); ctx.fillRect(-4,-48,8,18);
+      ctx.fillStyle="#2b3038"; roundRect(-11,-31,22,56,8); ctx.fill(); ctx.strokeStyle="#0b0d11"; ctx.lineWidth=2.4; ctx.stroke();
+      ctx.fillStyle="#101217"; ctx.beginPath(); ctx.moveTo(-11,20); ctx.quadraticCurveTo(0,48,11,20); ctx.closePath(); ctx.fill();   // 지면 방향 노즈
+      ctx.fillStyle="#ffd45d"; ctx.fillRect(-6,-4,12,4);
+    }
+    ctx.restore();
+  } else {   // 기타 기존 낙하물은 보급 상자 연출 유지
+    if(fb.z>40){ ctx.fillStyle="#e8554d"; ctx.beginPath(); ctx.arc(fb.x,by-13,11,Math.PI,0); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle="#bbb"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(fb.x-10,by-13); ctx.lineTo(fb.x-5,by-5); ctx.moveTo(fb.x+10,by-13); ctx.lineTo(fb.x+5,by-5); ctx.stroke(); }
+    ctx.fillStyle="#caa06a"; ctx.fillRect(fb.x-7,by-7,14,14); ctx.strokeStyle="#15171c"; ctx.lineWidth=1.6; ctx.strokeRect(fb.x-7,by-7,14,14);
+    ctx.strokeStyle="#7a5a35"; ctx.beginPath(); ctx.moveTo(fb.x,by-7); ctx.lineTo(fb.x,by+7); ctx.moveTo(fb.x-7,by); ctx.lineTo(fb.x+7,by); ctx.stroke();
+  }
 }
 function drawBombMarker(b){ if(b.delay<=0 && b.type===1) return; const T=BOMB_TYPES[b.type];
   ctx.save(); const r=b.type===1?(T.search):(T.area);
