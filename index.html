@@ -97,6 +97,18 @@
   #startRecommend .recCard .rcost{color:#ffd45d;font-weight:900;margin:8px 0;}
   #startRecommend .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:12px;}
   #startRecommend .skip{background:#2a2f3a;color:#d7e5f3;border:1px solid #4a5568;}
+
+  /* FINAL BALANCE PATCH: PC 추천 카드 확대 / 접힌 카드 이름 표시 */
+  body:not(.touch) #liveRecCard{right:22px;top:86px;width:min(330px,26vw);padding:12px 14px;border-radius:15px;}
+  body:not(.touch) #liveRecCard .rtitle{font-size:.86rem;}
+  body:not(.touch) #liveRecCard .rname{font-size:1.18rem;}
+  body:not(.touch) #liveRecCard .rwhy{font-size:.82rem;}
+  body:not(.touch) #liveRecCard button{font-size:.96rem;padding:10px 16px;}
+  #liveRecCard .rCollapsedName{display:none;}
+  #liveRecCard.collapsed{width:84px;height:68px;border-radius:13px;flex-direction:column;gap:2px;}
+  #liveRecCard.collapsed .rCollapsedName{display:block;font-size:.68rem;font-weight:900;line-height:1.05;max-width:76px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#ffd45d;}
+  body.touch #liveRecCard.collapsed{width:76px;height:62px;border-radius:12px;}
+  body.touch #liveRecCard.collapsed .rCollapsedName{font-size:.6rem;max-width:68px;}
   body.touch #liveRecCard{right:auto;top:auto;bottom:auto;transform:none;width:210px;max-width:52vw;padding:7px 8px;border-radius:12px;}
   body.touch #liveRecCard.collapsed{right:auto;top:auto;width:52px;height:52px;padding:0;border-radius:50%;}
   body.touch #liveRecCard.collapsed:hover{transform:none;}
@@ -237,7 +249,7 @@
 
 
   <div id="liveRecCard" class="hidden">
-    <div class="ricon">📦</div>
+    <div class="ricon">📦</div><div class="rCollapsedName" id="liveRecCollapsedName">추천</div>
     <div class="rbody">
       <div class="rtitle">🤖 AI 배송추천</div>
       <div class="rname" id="liveRecName">추천 화기</div>
@@ -5194,6 +5206,136 @@ pickArmoredVariant=function(){
   if(v && v.kind==='flame') return {kind:'minigun', label:'중장갑 미니건'};
   return v;
 };
+
+// ==========================================================
+// FINAL PATCH: 기계화 크기/드론 역할/탱크 스폰·공격 텀/AI추천 UI
+// ==========================================================
+(function(){
+  // 1) 기계화 유닛 크기 리밸런싱: 작은 애들은 키우고, 탱크/워커는 줄인다.
+  function tuneType(id, v){ if(typeof ETYPE!=='undefined' && ETYPE[id]) Object.assign(ETYPE[id], v); }
+  tuneType('assault',    {hp:26, rmin:18, rmax:25, speed:132, name:'돌격병'});
+  tuneType('suppressor', {hp:52, rmin:20, rmax:28, speed:88,  name:'제압병'});
+  tuneType('droneEnemy', {hp:30, rmin:16, rmax:22, speed:196, melee:0, ranged:true, name:'정찰 드론'});
+  tuneType('armored',    {hp:300,rmin:36, rmax:50, speed:76,  name:'전차'});
+  tuneType('walker',     {hp:1050,rmin:60,rmax:78, speed:44,  name:'강습 워커'});
+
+  // 2) 메타별 스폰 가중치 보정: 보병 중심, 탱크 희소화, 난이도 높을수록 전차/워커 증가.
+  function rebalanceEmpireMeta(m){
+    if(!m || !m.w) return;
+    const w=m.w;
+    const nm=m.name||'';
+    if(w.assault!=null || w.suppressor!=null || w.armored!=null || w.droneEnemy!=null || w.walker!=null){
+      if(nm.includes('돌격전')) Object.assign(w,{assault:76,suppressor:14,armored:3,droneEnemy:7,walker:0,special:0});
+      else if(nm.includes('처절한 사격전')) Object.assign(w,{assault:52,suppressor:38,armored:3,droneEnemy:7,walker:0,special:0});
+      else if(nm.includes('폭발 압박')) Object.assign(w,{assault:42,suppressor:34,armored:7,droneEnemy:13,special:4,walker:0});
+      else if(nm.includes('장갑 호송')) Object.assign(w,{assault:46,suppressor:14,armored:26,droneEnemy:6,special:4,walker:4});
+      else if(nm.includes('전장 오염')) Object.assign(w,{assault:38,suppressor:14,armored:7,droneEnemy:9,special:32,walker:0});
+      else if(nm.includes('강습 워커')) Object.assign(w,{assault:38,suppressor:22,armored:20,droneEnemy:8,special:4,walker:8});
+      else if(nm.includes('혼합 공세')) Object.assign(w,{assault:48,suppressor:24,armored:16,droneEnemy:8,special:2,walker:2});
+      // 낮은 난이도에서는 전차/워커가 너무 자주 나오지 않게 캡을 둔다.
+      if(typeof difficulty!=='undefined' && difficulty<=3){ w.armored=Math.min(w.armored||0,4); w.walker=0; }
+      if(typeof difficulty!=='undefined' && difficulty<=5){ w.walker=Math.min(w.walker||0,2); }
+    }
+  }
+  if(typeof OPERATION_METAS!=='undefined') OPERATION_METAS.forEach(rebalanceEmpireMeta);
+  if(typeof BATTLE_THEMES!=='undefined') BATTLE_THEMES.forEach(rebalanceEmpireMeta);
+
+  // 3) 드론은 자폭하지 않고, 플레이어 측면/후방을 맴돌며 약한 기관총을 쏘는 압박 유닛으로 변경.
+  const _enemyVariantFinalBalance = enemyVariant;
+  enemyVariant=function(kind,t){
+    if(t && t.family==='drone') return {kind:'gunDrone', label:'우회 사격 드론'};
+    if(kind==='droneEnemy') return {kind:'gunDrone', label:'우회 사격 드론'};
+    const v=_enemyVariantFinalBalance(kind,t);
+    if(v && v.kind==='suicide') return {kind:'gunDrone', label:'우회 사격 드론'};
+    return v;
+  };
+
+  // 새로 스폰되는 기계화 유닛의 크기/역할 보정. 기존 코드 전체를 건드리지 않고 공통 후처리로 묶는다.
+  const _spawnEnemyFinalBalance = spawnEnemy;
+  spawnEnemy=function(kind,x,y,role,home,pg,squad){
+    const before=enemies.length;
+    _spawnEnemyFinalBalance(kind,x,y,role,home,pg,squad);
+    for(let i=before;i<enemies.length;i++){
+      const e=enemies[i]; if(!e) continue;
+      if(kind==='droneEnemy' || (e.type&&e.type.family==='drone')){
+        e.ev={kind:'gunDrone',label:'우회 사격 드론'};
+        e.flank=(Math.random()<0.5?-1:1)*(1.35+Math.random()*0.45);
+        e.fire=0.75+Math.random()*0.55;
+        e.vis=Math.max(e.vis||0,620);
+      }
+      if(e.type && e.type.family==='armored'){
+        e.ev={kind:'minigun',label:'제국 전차'}; // 기존 탱크 포격 패치가 minigun/tank를 전차포로 처리한다.
+        e.fire=4.5+Math.random()*2.0;
+      }
+    }
+  };
+
+  // 4) 전차는 포격 이벤트 유닛. 너무 자주 쏘지 않도록 실제 발사 게이트를 별도 시간으로 막는다.
+  const _enemyCanFireAtPlayerFinalTankGate = enemyCanFireAtPlayer;
+  enemyCanFireAtPlayer=function(e,d,maxRange){
+    if(e && typeof mechIsTank==='function' && mechIsTank(e)){
+      const now=performance.now();
+      if(e._tankNextFireAt && now<e._tankNextFireAt){
+        return {can:false, reason:'tank_cooldown'};
+      }
+    }
+    return _enemyCanFireAtPlayerFinalTankGate(e,d,maxRange);
+  };
+  const _fireEnemyShotFinalTankGate = fireEnemyShot;
+  fireEnemyShot=function(e,dx,dy){
+    if(e && typeof mechIsTank==='function' && mechIsTank(e)){
+      const now=performance.now();
+      if(e._tankNextFireAt && now<e._tankNextFireAt) return;
+      e._tankNextFireAt = now + (8200 + Math.random()*2800); // 8.2~11초. 계속 포격만 피하는 피로도 감소.
+      e.fire = Math.max(e.fire||0,7.2+Math.random()*2.4);
+    }
+    return _fireEnemyShotFinalTankGate(e,dx,dy);
+  };
+  // 경고 표시도 조금 더 길게 남겨 회피를 확실히 하게 한다.
+  if(typeof createTankShellTelegraph==='function'){
+    const _createTankShellTelegraphFinalBalance = createTankShellTelegraph;
+    createTankShellTelegraph=function(e,tx,ty){
+      _createTankShellTelegraphFinalBalance(e,tx,ty);
+      if(typeof tankShellTelegraphs!=='undefined'){
+        const t=tankShellTelegraphs[tankShellTelegraphs.length-1];
+        if(t && t.owner===e){ t.life=Math.max(t.life||0,1.65); t.r=Math.min(t.r||58,54); }
+      }
+    };
+  }
+
+  // 5) PC/모바일 추천 UI: 접힌 아이콘 아래에 추천 무기 이름을 표시하고, PC에서는 살짝 더 눈에 띄는 위치/크기.
+  const collapsedNameEl=document.getElementById('liveRecCollapsedName');
+  const _showLiveRecommendationFinalLabel = showLiveRecommendation;
+  showLiveRecommendation=function(r){
+    _showLiveRecommendationFinalLabel(r);
+    if(collapsedNameEl && liveRec) collapsedNameEl.textContent=recName(liveRec);
+  };
+  const _syncLiveRecommendationLayoutFinal = syncLiveRecommendationLayout;
+  syncLiveRecommendationLayout=function(){
+    if(liveRecCard.classList.contains('hidden')) return _syncLiveRecommendationLayoutFinal();
+    if(!isTouch){
+      liveRecCard.style.left=''; liveRecCard.style.top='';
+      if(liveRecCard.classList.contains('collapsed')) liveRecCard.style.width='84px';
+      else liveRecCard.style.width='';
+      return;
+    }
+    const r=canvas.getBoundingClientRect();
+    const u=Math.max(30,Math.min(44,Math.min(W,H)*0.062));
+    const g=u*2.35, te=u*0.95;
+    const recX=W-te-g*2, recY=te;
+    if(liveRecCard.classList.contains('collapsed')){
+      liveRecCard.style.width='76px';
+      liveRecCard.style.left=Math.round(r.left+recX-38)+'px';
+      liveRecCard.style.top=Math.round(r.top+recY-31)+'px';
+    }else{
+      const cw=Math.min(214,Math.max(172,W*0.42));
+      liveRecCard.style.width=Math.round(cw)+'px';
+      liveRecCard.style.left=Math.round(r.left+W-cw-6)+'px';
+      liveRecCard.style.top=Math.round(r.top+6)+'px';
+    }
+  };
+})();
+
 </script>
 </body>
 </html>
