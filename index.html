@@ -202,7 +202,59 @@
   #landscapePrompt .small{font-size:.78rem;color:#9fb4c8;margin-top:10px;}
   body.touch.portrait #landscapePrompt{display:flex;}
 
+
+
+  /* ARMOR THEME UX PATCH: 장갑 관통 색상 공통 표기 */
+  .armorBadge{display:inline-flex;align-items:center;gap:4px;margin-left:6px;padding:2px 6px;border-radius:999px;border:1px solid currentColor;font-size:.68rem;font-weight:900;text-shadow:none;background:rgba(0,0,0,.35);vertical-align:middle;}
+  .armorDot{display:inline-block;width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor;}
+  #weapon-info .warmor{display:inline-block;margin-top:2px;padding:2px 8px;border-radius:999px;border:1px solid currentColor;background:rgba(0,0,0,.34);text-shadow:0 0 4px #000;}
+  #buyMenu .item{border:1px solid rgba(255,255,255,.08);}
+  #buyMenu .item[data-armor]{border-color:var(--armor-color,rgba(255,255,255,.18));}
+  #buyMenu .item[data-armor] .spec .armorBadge{margin-left:8px;}
+  #liveRecCard{--rec-armor:#ffd45d;}
+  #liveRecCard .rarmor{display:inline-flex;margin-top:3px;margin-bottom:6px;padding:2px 7px;border-radius:999px;border:1px solid var(--rec-armor);color:var(--rec-armor);background:rgba(0,0,0,.35);font-size:.7rem;font-weight:900;}
+  #liveRecCard.recPulse{animation:recPulse .58s ease-out 0s 2;}
+  @keyframes recPulse{0%{box-shadow:0 0 0 0 var(--rec-armor),0 12px 36px rgba(0,0,0,.52);transform:scale(1);}45%{box-shadow:0 0 0 8px color-mix(in srgb,var(--rec-armor) 30%,transparent),0 12px 36px rgba(0,0,0,.52);transform:scale(1.035);}100%{box-shadow:0 0 0 0 transparent,0 12px 36px rgba(0,0,0,.52);transform:scale(1);}}
+  body:not(.touch) #liveRecCard{right:22px;top:170px;width:min(360px,28vw);padding:14px 16px;border-radius:15px;}
+  body:not(.touch) #liveRecCard.collapsed{width:min(360px,28vw);height:auto;border-radius:15px;padding:14px 16px;display:block;opacity:1;}
+  body:not(.touch) #liveRecCard.collapsed .ricon, body:not(.touch) #liveRecCard.collapsed .rCollapsedName{display:none;}
+  body:not(.touch) #liveRecCard.collapsed .rbody{display:block;}
+
+  /* PC AI 추천 카드: 미니맵 아래 고정 + 갱신 시 주변시 인지용 연출 */
+  body:not(.touch) #liveRecCard{
+    right:auto; top:auto; width:300px; max-width:300px;
+    padding:14px 16px; border-radius:15px;
+  }
+  body:not(.touch) #liveRecCard.recPulse{animation:recUpdatePop .72s ease-out 0s 2;}
+  @keyframes recUpdatePop{
+    0%{transform:translateY(-5px) scale(.985);box-shadow:0 0 0 0 var(--rec-armor),0 12px 36px rgba(0,0,0,.52);}
+    35%{transform:translateY(0) scale(1.035);box-shadow:0 0 0 9px color-mix(in srgb,var(--rec-armor) 34%,transparent),0 16px 42px rgba(0,0,0,.62);}
+    100%{transform:translateY(0) scale(1);box-shadow:0 0 0 0 transparent,0 12px 36px rgba(0,0,0,.52);}
+  }
+
 </style>
+
+<style id="pc-rec-minimap-hard-anchor-fix">
+/* HARD FIX: PC AI 배송추천 카드가 JS 배치 전에 static 위치(화면 중앙)에 뜨지 않도록 CSS 기본값 자체를 미니맵 아래로 고정한다. */
+body:not(.touch) #liveRecCard{
+  position:fixed !important;
+  left:auto !important;
+  right:14px !important;
+  top:calc(min(84px,16vh) + (clamp(150px,28vw,300px) * 0.7462686567) + 18px) !important;
+  bottom:auto !important;
+  width:clamp(150px,28vw,300px) !important;
+  max-width:clamp(150px,28vw,300px) !important;
+  transform:none !important;
+}
+body:not(.touch) #liveRecCard.collapsed{
+  width:clamp(150px,28vw,300px) !important;
+  max-width:clamp(150px,28vw,300px) !important;
+  height:auto !important;
+  display:block !important;
+  opacity:1 !important;
+}
+</style>
+
 </head>
 <body>
   <canvas id="game"></canvas>
@@ -254,6 +306,7 @@
       <div class="rtitle">🤖 AI 배송추천</div>
       <div class="rname" id="liveRecName">추천 화기</div>
       <div class="rwhy" id="liveRecWhy">현재 전황에 적합합니다.</div>
+      <div class="rarmor" id="liveRecArmor">관통: 경장갑</div>
       <div class="rrow"><button id="liveRecBuy">주문</button><span class="rkey">G</span><span class="rcost" id="liveRecCost">0 C</span></div>
     </div>
   </div>
@@ -543,7 +596,27 @@ function aoeBlast(x,y,r,dmg,pen){   // 폭발 광역 — 크레이터 가둠/엄
 //---------------- 무기 정의 ----------------
 //  cat:'basic'(기본·예비탄 무한) | 'power'(화력·제한 예비탄)
 //  탄창(mag) + 재장전(reload) + 스프레드/반동 시스템.
-const ARMOR_NAME=["경장갑","일반 장갑","중장갑","대전차 장갑"];
+const ARMOR_NAME=["경장갑","일반장갑","중장갑","대전차 장갑"];
+const ARMOR_THEME=[
+  {key:"light", name:"경장갑", color:"#9ca3af", bullet:"#b7bec8"},
+  {key:"normal", name:"일반장갑", color:"#ffffff", bullet:"#f2f2f2"},
+  {key:"heavy", name:"중장갑", color:"#f5b642", bullet:"#ffc24a"},
+  {key:"antiTank", name:"대전차 장갑", color:"#ff3b30", bullet:"#ff5a50", double:true}
+];
+function armorTheme(pen){ pen=Math.max(0,Math.min(3,pen|0)); return ARMOR_THEME[pen]; }
+function armorColor(pen){ return armorTheme(pen).color; }
+function armorLabelHTML(pen){ const a=armorTheme(pen); return `<span class="armorBadge" style="color:${a.color}"><span class="armorDot"></span>${a.name}</span>`; }
+function armorPlain(pen){ return armorTheme(pen).name; }
+function weaponById(id){ return WEAPONS.find(w=>w.id===id); }
+function recPierceArmor(r){ r=normalizeLiveRec(r); if(!r) return 0;
+  if(r.kind==="weapon"){ const w=weaponById(r.id); return w?Math.max(0,w.pen||0):0; }
+  if(r.kind==="drone"){ const d=DRONE_TYPES[r.id]; return d?Math.max(0,d.pen||0):0; }
+  if(r.kind==="turret"){ const v=TURRET_VARIANTS[r.id]; return v?Math.max(0,v.pen||0):0; }
+  if(r.kind==="air"){ const v=AIR_TYPES[r.id]; return v?Math.max(0,v.pen||0):0; }
+  if(r.kind==="bomb"){ const b=BOMB_TYPES[r.id]; return b?Math.max(0,b.pen||0):0; }
+  return 0; }
+function recArmorHTML(r){ return armorLabelHTML(recPierceArmor(r)); }
+
 // spreadBase: 서 있을 때 기본 오차각 · spreadMove: 이동 시 가산 · spreadShot: 발당 증가 · spreadMax: 한계
 // recoilV: 발당 수직(에임방향) 반동(px) · recoilH: 발당 좌우 반동(px)  (이동 중이면 더 커짐)
 // range = 탄환 사거리(월드 단위). 미션 간 거리(~1000+) 대비 짧게 설정해 맵 끝 적까지 닿지 않게 함.
@@ -1126,6 +1199,22 @@ function chooseOperationMeta(){
   let r=Math.random()*total; for(const [m,v] of weighted){ r-=v; if(r<=0) return levelAdjustedMeta(m,difficulty); }
   return levelAdjustedMeta(candidates[0]||OPERATION_METAS[0],difficulty);
 }
+
+// 작전 선택 고정: 브리핑에 표시된 메타와 실제 인게임 메타가 갈라지지 않도록 출격 시 현재 operationMeta를 재사용한다.
+function metaBaseByName(name){ return OPERATION_METAS.find(m=>m.name===name) || null; }
+function prepareOperationMetaForLaunch(current){
+  let base = current && current.name ? metaBaseByName(current.name) : null;
+  if(!base || base.minLv>difficulty) base = metaBaseByName((operationMeta&&operationMeta.name)||"") || null;
+  if(!base || base.minLv>difficulty) return chooseOperationMeta();
+  return levelAdjustedMeta(base,difficulty);
+}
+function metaWeightKeys(m){ return Object.keys((m&&m.w)||{}).sort().join(","); }
+function assertOperationMetaConsistency(briefMeta, launchMeta){
+  if(!briefMeta||!launchMeta) return;
+  if(briefMeta.name!==launchMeta.name){
+    pushLog && pushLog(`⚠️ 작전 메타 불일치: 브리핑=${briefMeta.name}, 실제=${launchMeta.name}`,"#ff8a8a");
+  }
+}
 function star(v){ v=Math.max(0,Math.min(5,Math.round(v))); return "★★★★★".slice(0,v)+"☆☆☆☆☆".slice(0,5-v); }
 
 // ===== 지형 바이옴 — 매판 랜덤(적 조합과 별개). 바닥색/그리드 + 데코 밀도 + 선호 프리팹 세트 =====
@@ -1365,8 +1454,10 @@ function resetGame(){
   startRecOpen=false; liveRec=null; liveRecTimer=0; liveRecCard.classList.add("hidden"); liveRecCard.classList.remove("collapsed"); startRecommend.classList.add("hidden");
   aiRecommendEnabled = assistToggleInput ? assistToggleInput.checked : aiRecommendEnabled;
   deathPending=false; deathT=0; player.dead=false; player.deathAng=0;
-  operationMeta=chooseOperationMeta();
-  battleTheme=operationMeta;   // 이번 작전 메타(+난이도/하위 메타 강화 반영)
+  const briefingMeta=operationMeta;
+  operationMeta=prepareOperationMetaForLaunch(operationMeta);
+  assertOperationMetaConsistency(briefingMeta,operationMeta);
+  battleTheme=operationMeta;   // 브리핑에서 선택된 작전 메타를 그대로 사용
   biome=BIOMES[Math.floor(Math.random()*BIOMES.length)];   // 이번 작전 지형 바이옴
   playerInBush=false;
   placeExit(); resetAssaultFront(); makeObjectives(); genCovers(); populateWorld(); spawnBountyTarget(); started=true; refreshBriefingPanel();
@@ -1521,7 +1612,7 @@ function renderBuy(){
     buySub.textContent="구매 시 해당 포탑 충전 보급 + 슬롯3 장착. [Backspace] 뒤로";
     buyList.innerHTML=TURRET_VARIANTS.map((v,i)=>{
       const cant=player.credits<v.cost?"cant":"";
-      const spec=v.deploy==="mine"?`지뢰 ${v.count}발 자동 매설 · 반경 ${v.radius}`:(v.deploy==="supply"?`보급품 ${v.count}개 살포`:(v.flame?`단거리 원뿔·화상 · ${ARMOR_NAME[v.pen]}`:(v.splash?`미사일 광역 · ${ARMOR_NAME[v.pen]}`:`자동 사격 · ${ARMOR_NAME[v.pen]}`)));
+      const spec=v.deploy==="mine"?`지뢰 ${v.count}발 자동 매설 · 반경 ${v.radius}`:(v.deploy==="supply"?`보급품 ${v.count}개 살포`:(v.flame?`단거리 원뿔·화상 · ${armorLabelHTML(v.pen)}`:(v.splash?`미사일 광역 · ${armorLabelHTML(v.pen)}`:`자동 사격 · ${armorLabelHTML(v.pen)}`)));
       return `<div class="item ${cant}${itemRecClass("turret",i)}"><span><span class="key">${i+1}</span><span class="name">${v.name}${recHtml("turret",i)}</span></span>
               <span class="spec">${spec}</span><span class="cost">${v.cost} C</span></div>`;
     }).join("");
@@ -1533,8 +1624,8 @@ function renderBuy(){
       const w=WEAPONS[widx(id)]; const cant=player.credits<w.cost?"cant":"";
       const tag = w.flame?` · 🔥화염방사`:(w.ignite?` · 🔥${Math.round(w.ignite*100)}% 점화`:(w.knock?` · 💨넉백`:(w.splash?` · 💥광역`:"")));
       const spec = w.oneshot
-        ? `단발 소모형(2개 투하) · ${ARMOR_NAME[w.pen]} · 발사 후 폐기`
-        : `장탄 ${w.magSize}+예비${w.reserveMax||0} · ${ARMOR_NAME[w.pen]}${tag}`;
+        ? `단발 소모형(2개 투하) · ${armorLabelHTML(w.pen)} · 발사 후 폐기`
+        : `장탄 ${w.magSize}+예비${w.reserveMax||0} · ${armorLabelHTML(w.pen)}${tag}`;
       return `<div class="item ${cant}${itemRecClass("weapon",id)}"><span><span class="key">${i+1}</span><span class="name">${w.name}${recHtml("weapon",id)}</span></span>
               <span class="spec">${spec}</span><span class="cost">${w.cost} C</span></div>`;
     }).join("");
@@ -1597,7 +1688,7 @@ function updateDrone(dt){
   if(drone.ammo<=0){ drone.state="return"; return; }
   if(!combat) return;
   drone.cd-=dt;
-  if(drone.kind==="mg"){ if(best&&drone.cd<=0){ drone.cd=D.fireCD; const a=Math.atan2(best.y-drone.y,best.x-drone.x)+(Math.random()-0.5)*0.06; bullets.push({x:drone.x,y:drone.y,vx:Math.cos(a)*1050,vy:Math.sin(a)*1050,dmg:D.dmg,pen:D.pen,splash:0,pierce:false,life:0.55,fromPlayer:true,color:D.color,hits:[]}); drone.ammo--; } }
+  if(drone.kind==="mg"){ if(best&&drone.cd<=0){ drone.cd=D.fireCD; const a=Math.atan2(best.y-drone.y,best.x-drone.x)+(Math.random()-0.5)*0.06; bullets.push({x:drone.x,y:drone.y,vx:Math.cos(a)*1050,vy:Math.sin(a)*1050,dmg:D.dmg,pen:D.pen,splash:0,pierce:false,life:0.55,fromPlayer:true,color:D.color,armorPen:D.pen,armorColor:armorColor(D.pen),hits:[]}); drone.ammo--; } }
   else if(drone.kind==="flame"){ if(best&&Math.hypot(best.x-drone.x,best.y-drone.y)<D.range){ drone.ammo-=34*dt; const ax=Math.atan2(best.y-drone.y,best.x-drone.x);
     for(const e of enemies){ if(!e.alive) continue; const dd=Math.hypot(e.x-drone.x,e.y-drone.y); if(dd>D.range) continue; let an=Math.atan2(e.y-drone.y,e.x-drone.x)-ax; while(an>Math.PI)an-=2*Math.PI;while(an<-Math.PI)an+=2*Math.PI; if(Math.abs(an)<0.55){ damageEnemy(e,75*dt,3,true,false,false,null,false,true); e.burn=5; } }
     for(let i=0;i<2;i++){ const an=ax+(Math.random()-0.5); particles.push({x:drone.x,y:drone.y,vx:Math.cos(an)*220,vy:Math.sin(an)*220,life:0.18,max:0.18,r:5,color:"#ff7a1a",kind:"blood"}); }
@@ -1768,7 +1859,7 @@ function shoot(){
       bullets.push({x:player.x+Math.cos(a)*6,y:player.y+Math.sin(a)*6,   // 몸 가까이서 생성 → 겹친(점블랭크) 적도 명중
         vx:Math.cos(a)*w.bspd,vy:Math.sin(a)*w.bspd,dmg:w.dmg,pen:w.pen,splash:w.splash||0,pierce:w.pierce||false,
         ignite:w.ignite||0,knock:w.knock||0,
-        life,fromPlayer:true,color:w.color,hits:[]});
+        life,fromPlayer:true,color:w.color,armorPen:w.pen,armorColor:armorColor(w.pen),hits:[]});
     }
   }
   sfx("shot",w.id); gunfireT=0.2; shake=Math.max(shake,Math.min(9,1.8+w.recoilV*0.24));   // 사격 → 경계 + 카메라 쉐이크
@@ -2082,7 +2173,7 @@ function enemyFlame(e,dt){
     const a=Math.atan2(player.y-e.y,player.x-e.x); let da=a-ang; while(da>Math.PI)da-=6.283; while(da<-Math.PI)da+=6.283;
     if(Math.abs(da)<cone && player.invuln<=0 && !absorbHit()){ player.hp-=22*DIFF.dmg*dt; player.slowT=Math.max(player.slowT,0.5); flashDamage(); }
   }
-  if(Math.random()<0.55){ const x=e.x+Math.cos(ang)*(40+Math.random()*range), y=e.y+Math.sin(ang)*(40+Math.random()*range); spawnGroundFire(x,y,28,1.1); }
+  if(Math.random()<0.40){ const x=e.x+Math.cos(ang)*(34+Math.random()*Math.min(range,150)), y=e.y+Math.sin(ang)*(34+Math.random()*Math.min(range,150)); spawnGroundFire(x,y,22,0.85,"enemy"); }
 }
 function enemyGas(e,dt){
   if(Math.random()<0.35){ firePatches.push({x:e.x+(Math.random()-0.5)*80,y:e.y+(Math.random()-0.5)*80,r:75,life:4,max:4,dmg:5,pen:3,color:"#7CFF7C",gas:true}); }
@@ -2365,12 +2456,15 @@ function updateEnemies(dt){
       if(e.type.ranged){
         const ev=e.ev||{};
         const preferred = ev.kind==="shotgun"?190:ev.kind==="grenade"?520:ev.kind==="missile"?650:ev.kind==="walker"?760:ev.kind==="flame"?185:ev.kind==="minigun"?420:360;
-        if(ev.kind==="suicide"){
+        if(false && ev.kind==="suicide"){
           if(d>e.r+player.r+20){ e.x+=vx/vl*espeed(e)*1.7*speedMul*dt; e.y+=vy/vl*espeed(e)*1.7*speedMul*dt; }
           else { boomFx(e.x,e.y,75); aoeBlast(e.x,e.y,95,85,2); e.alive=false; }
         } else if(ev.kind==="flame"){
-          if(d>preferred){ e.x+=vx/vl*espeed(e)*0.85*speedMul*dt; e.y+=vy/vl*espeed(e)*0.85*speedMul*dt; }
-          enemyFlame(e,dt);
+          // 화염 돌파병은 사거리 밖에서 미리 불을 뿌리지 않는다.
+          // 먼저 접근한 뒤, 실제 화염 사거리 안에서만 발사해 자기 잔불/팀킬이 과도하게 발생하지 않게 한다.
+          if(d>preferred+18){ e.x+=vx/vl*espeed(e)*0.92*speedMul*dt; e.y+=vy/vl*espeed(e)*0.92*speedMul*dt; }
+          else if(d<preferred*0.58){ e.x-=vx/vl*espeed(e)*0.25*speedMul*dt; e.y-=vy/vl*espeed(e)*0.25*speedMul*dt; enemyFlame(e,dt); }
+          else enemyFlame(e,dt);
         } else {
           if(d>preferred+50){ e.x+=vx/vl*espeed(e)*chargeMul*speedMul*dt; e.y+=vy/vl*espeed(e)*chargeMul*speedMul*dt; }
           else if(d<preferred-90){ e.x-=vx/vl*espeed(e)*0.45*speedMul*dt; e.y-=vy/vl*espeed(e)*0.45*speedMul*dt; }
@@ -2733,7 +2827,7 @@ function updateBombs(dt){
   bombardments=bombardments.filter(b=>!b.done);
   // 네이팜 화염 지대 (닿으면 화상)
   for(const f of firePatches){ f.life-=dt;
-    for(const e of enemies){ if(e.alive && Math.hypot(e.x-f.x,e.y-f.y)<=f.r){ e.burn=3; e.aggro=true; } }
+    for(const e of enemies){ if(!f.enemyFire && e.alive && Math.hypot(e.x-f.x,e.y-f.y)<=f.r){ e.burn=3; e.aggro=true; } }
     if(player.invuln<=0 && Math.hypot(player.x-f.x,player.y-f.y)<=f.r){ player.hp-=12*dt; flashDamage(); }   // 피아구분 없음 — 자기 잔불도 데임
     if(f.life<=0) addScorch(f.x,f.y,f.r*0.9); }   // 불이 꺼진 자리에 그을음
   firePatches=firePatches.filter(f=>f.life>0);
@@ -2853,10 +2947,10 @@ function addScorch(x,y,r){   // 바닥에 남는 그을린 자국(미션 동안 
   scorches.push({x,y,r,tone:0.55+Math.random()*0.45});
   if(scorches.length>110) scorches.shift();
 }
-function spawnGroundFire(x,y,r,life){   // 화염방사기/화염드론이 남기는 잔불(잠시 후 소멸)
+function spawnGroundFire(x,y,r,life,source){   // 화염방사기/화염드론이 남기는 잔불(잠시 후 소멸)
   if(coverAt(x,y)) return;
   for(const f of firePatches){ if(f.mini && Math.hypot(f.x-x,f.y-y)<r*0.7){ f.life=Math.max(f.life,life); return; } }
-  firePatches.push({x,y,r,life,mini:true});
+  firePatches.push({x,y,r,life,mini:true,enemyFire:source==="enemy"});
   if(firePatches.length>130) firePatches.shift();
 }
 function dropWeapon(w){   // 다 쓴 무기를 바닥에 버림(잔해)
@@ -2946,7 +3040,7 @@ function updateTacticals(dt){
           grenades.push({sx:tr.x,sy:tr.y,x:tr.x,y:tr.y,tx:best.x,ty:best.y,t:0,dur:Math.max(1.5,dd/620),z:0,dmg:tr.dmg,radius:tr.splash,pen:tr.pen,color:tr.color}); }
       } else if(tr.cd<=0){ tr.cd=tr.fireDelay;
         if(tr.splash>0) missiles.push({x:tr.x,y:tr.y,tx:best.x,ty:best.y,spd:540,dmg:tr.dmg,pen:tr.pen,radius:tr.splash});
-        else bullets.push({x:tr.x,y:tr.y,vx:Math.cos(tr.ang)*950,vy:Math.sin(tr.ang)*950,dmg:tr.dmg,pen:tr.pen,splash:0,pierce:false,life:1,fromPlayer:true,color:tr.color,hits:[]});
+        else bullets.push({x:tr.x,y:tr.y,vx:Math.cos(tr.ang)*950,vy:Math.sin(tr.ang)*950,dmg:tr.dmg,pen:tr.pen,splash:0,pierce:false,life:1,fromPlayer:true,color:tr.color,armorPen:tr.pen,armorColor:armorColor(tr.pen),hits:[]});
       } }
   }
   for(const tr of turrets){ if(tr.hp<=0 && !tr.dead){ tr.dead=true; boomFx(tr.x,tr.y,40); } }
@@ -3348,7 +3442,9 @@ function render(){
     ctx.save(); ctx.strokeStyle=b.color; ctx.globalAlpha=0.5; ctx.lineWidth=b.fromPlayer?3:4; ctx.lineCap="round";
     ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.x-b.vx*0.022,b.y-b.vy*0.022); ctx.stroke();
     ctx.globalAlpha=0.45; ctx.fillStyle=b.color; ctx.beginPath(); ctx.arc(b.x,b.y,b.fromPlayer?5:6,0,7); ctx.fill();
-    ctx.globalAlpha=1; ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(b.x,b.y,b.fromPlayer?2.4:3,0,7); ctx.fill(); ctx.restore(); }
+    ctx.globalAlpha=1; ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(b.x,b.y,b.fromPlayer?2.4:3,0,7); ctx.fill();
+    if(b.fromPlayer && b.armorColor){ ctx.globalAlpha=0.95; ctx.strokeStyle=b.armorColor; ctx.lineWidth=(b.armorPen>=3?2.2:1.5); ctx.beginPath(); ctx.arc(b.x,b.y,b.armorPen>=3?7.5:6.5,0,7); ctx.stroke(); }
+    ctx.restore(); }
   for(const tr of turrets) drawTurret(tr);
   for(const e of enemies){ if(e.alive) drawEnemy(e); }
   for(const m of missiles) drawMissile(m);
@@ -3900,7 +3996,7 @@ function updateHUD(dt){
   } else { const t=TACTICALS[sl.ti];
     if(t.kind==="turret"){ const v=TURRET_VARIANTS[turretVariant];
       wName.textContent="[슬롯3] 자동 포탑 — "+v.name; wAmmo.textContent=t.charges+" / "+t.max;
-      wArmor.textContent=`[1]기관총 [2]로켓 [3]화염 [4]박격포 · 관통 ${ARMOR_NAME[v.pen]}`;
+      wArmor.textContent=`[1]기관총 [2]로켓 [3]화염 [4]박격포 · 관통 ${armorLabelHTML(v.pen)}`;
     } else { wName.textContent="[슬롯3] "+t.name+" (투척)"; wAmmo.textContent=t.charges+" / "+t.max; wArmor.textContent="착탄 폭발 · 전 장갑"; }
   }
   const g1=WEAPONS[slots[0].wi], g2=slots[1].wi!=null?WEAPONS[slots[1].wi]:null, t3=TACTICALS[slots[2].ti];
@@ -4066,7 +4162,7 @@ function drawEnemy(e){
     if(e.type.family==="assault"){ ctx.fillStyle=ev.kind==="shotgun"?"#ffb35a":"#d8d8d8"; ctx.fillRect(r*0.2,-3,r*0.95,6); }
     else if(e.type.family==="suppressor"){ ctx.fillStyle="#6f95ff"; ctx.fillRect(r*0.1,-4,r*1.25,8); if(ev.kind==="grenade"){ ctx.fillStyle="#ff3a3a"; ctx.beginPath(); ctx.arc(r*0.0,-r*0.65,5,0,7); ctx.fill(); } }
     else if(e.type.family==="armored"){ ctx.fillStyle="#2b2d32"; ctx.fillRect(r*0.05,-r*0.24,r*1.05,r*0.48); if(ev.kind==="missile"){ ctx.fillStyle="#ff7a2e"; ctx.fillRect(r*0.55,-r*0.55,r*0.55,r*0.18); ctx.fillRect(r*0.55,r*0.37,r*0.55,r*0.18); } else if(ev.kind==="flame"){ ctx.fillStyle="#ff7a2e"; ctx.fillRect(r*0.45,-5,r*0.75,10); } }
-    else if(e.type.family==="drone"){ ctx.fillStyle="#9fd0ff"; ctx.fillRect(-r*0.95,-3,r*1.9,6); ctx.fillRect(-3,-r*0.95,6,r*1.9); ctx.fillStyle="#dfe8ff"; ctx.beginPath(); ctx.arc(0,0,r*0.45,0,7); ctx.fill(); if(ev.kind==="suicide"){ const blink=0.45+0.55*Math.sin(performance.now()/70); ctx.fillStyle=blink>0.55?"#ff3333":"#ffe14d"; ctx.fillText("🧨",0,-r*1.35); ctx.strokeStyle="#ff3333"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(0,0,r*(0.9+0.15*blink),0,7); ctx.stroke(); } }
+    else if(e.type.family==="drone"){ ctx.fillStyle="#9fd0ff"; ctx.fillRect(-r*0.95,-3,r*1.9,6); ctx.fillRect(-3,-r*0.95,6,r*1.9); ctx.fillStyle="#dfe8ff"; ctx.beginPath(); ctx.arc(0,0,r*0.45,0,7); ctx.fill(); if(false && ev.kind==="suicide"){ const blink=0.45+0.55*Math.sin(performance.now()/70); ctx.fillStyle=blink>0.55?"#ff3333":"#ffe14d"; ctx.fillText("🧨",0,-r*1.35); ctx.strokeStyle="#ff3333"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(0,0,r*(0.9+0.15*blink),0,7); ctx.stroke(); } }
     else if(e.type.family==="walker"){ ctx.fillStyle="#3c454e"; ctx.fillRect(-r*0.55,-r*0.35,r*1.25,r*0.7); ctx.fillStyle="#ff7a2e"; ctx.fillRect(r*0.35,-r*0.65,r*0.75,r*0.18); ctx.fillRect(r*0.35,r*0.47,r*0.75,r*0.18); }
     else if(e.type.family==="special"){ ctx.fillStyle=ev.kind==="gascar"?"#7CFF7C":"#ff7a2e"; ctx.fillRect(-r*0.8,-r*0.4,r*1.45,r*0.8); ctx.fillStyle="#111"; ctx.beginPath(); ctx.arc(-r*0.45,r*0.45,5,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(r*0.45,r*0.45,5,0,7); ctx.fill(); }
   } else {
@@ -4324,7 +4420,7 @@ OPERATION_METAS.splice(0,OPERATION_METAS.length,
   {name:"처절한 사격전", faction:"empire", icon:"🔫", minLv:3, desc:"제국 기계화 군단의 원거리 탄막과 수류탄이 엄폐를 압박한다", weight:4,
     threat:{inf:0,mech:5,heavy:1,anti:0}, w:{assault:46,suppressor:42,armored:6,droneEnemy:6},
     rec:[{kind:"air",id:3,why:"원형 방탄 배리어로 탄막 차단"},{kind:"air",id:4,why:"가로 연막으로 사격선 차단"},{kind:"air",id:0,why:"기총소사로 사격선 절단"},{kind:"bomb",id:0,why:"고폭탄으로 진지 붕괴"}]},
-  {name:"폭발 압박", faction:"empire", icon:"💣", minLv:4, desc:"수류탄·미사일·자폭 드론이 위치를 계속 바꾸게 만드는 기계화 공세", weight:3,
+  {name:"폭발 압박", faction:"empire", icon:"💣", minLv:4, desc:"수류탄·미사일·우회 사격 드론이 위치를 계속 바꾸게 만드는 기계화 공세", weight:3,
     threat:{inf:0,mech:4,heavy:2,anti:1}, w:{assault:28,suppressor:40,armored:16,droneEnemy:12,special:4},
     rec:[{kind:"bomb",id:3,why:"EMP로 미사일·기계화 압박 차단"},{kind:"air",id:3,why:"배리어로 탄막 생존성 확보"},{kind:"air",id:4,why:"연막으로 사격선 차단"},{kind:"drone",id:4,why:"요격 드론으로 투사체 부담 완화"}]},
   {name:"장갑 호송", faction:"empire", icon:"🚚", minLv:5, desc:"제국 중장갑과 특수차량이 전선 중앙을 밀고 들어온다", weight:3,
@@ -4931,7 +5027,7 @@ mechRearHit=function(e,hitDir){
 
 // ===== 2026-07-02 final empire unit design refactor =====
 // 목적:
-// - 기계화 군단은 5종으로 정리: 돌격병, 화염 돌파병, 자폭드론, 전차, 워커.
+// - 기계화 군단은 5종으로 정리: 돌격병, 화염 돌파병, 우회 사격 드론, 전차, 워커.
 // - 화염 전차는 삭제하고, 화염 역할은 돌파병 강화복으로 이전.
 // - 이전처럼 보이는 한 부분만 고치는 방식이 아니라, 기계화 렌더링은 여기서 한 번에 최종 처리한다.
 // - 모든 장갑 테두리는 실제 몸체 Path를 그대로 stroke해서 몸체와 어긋나지 않게 한다.
@@ -4962,9 +5058,9 @@ enemyVariant=function(kind,t){
   }
   if(t && t.family==='suppressor') return {kind:'ar', label:'돌격병'};
   if(t && t.family==='armored') return {kind:'tank', label:'제국 돌격전차'};
-  if(t && t.family==='drone') return {kind:'suicide', label:'자폭드론'};
+  if(t && t.family==='drone') return {kind:'gunDrone', label:'우회 사격 드론'};
   if(t && t.family==='walker') return {kind:'walker', label:'강습 워커'};
-  if(t && t.family==='special') return {kind:'suicide', label:'자폭드론'};
+  if(t && t.family==='special') return {kind:'gunDrone', label:'우회 사격 드론'};
   return _enemyVariantBeforeEmpireDesignRefactor(kind,t);
 };
 
@@ -4975,7 +5071,7 @@ spawnEnemy=function(kind,x,y,role,home,pg,squad){
   if(!e||!isMechEnemy(e)) return;
   const ev=e.ev||{};
   if(e.type.family==='suppressor'){ e.type=ETYPE.assault; e.kind='assault'; e.ev={kind:'ar',label:'돌격병'}; }
-  if(e.type.family==='special'){ e.type=ETYPE.droneEnemy; e.kind='droneEnemy'; e.ev={kind:'suicide',label:'자폭드론'}; }
+  if(e.type.family==='special'){ e.type=ETYPE.droneEnemy; e.kind='droneEnemy'; e.ev={kind:'gunDrone',label:'우회 사격 드론'}; }
   if(e.type.family==='armored') e.ev={kind:'tank',label:'제국 돌격전차'};
   if(e.type.family==='assault' && ev.kind==='shotgun') e.ev={kind:'flame',label:'화염 돌파병'};
   e.bodyFace=Number.isFinite(e.bodyFace)?e.bodyFace:(Number.isFinite(e.face)?e.face:Math.random()*Math.PI*2);
@@ -5334,6 +5430,493 @@ pickArmoredVariant=function(){
       liveRecCard.style.top=Math.round(r.top+6)+'px';
     }
   };
+})();
+
+
+
+/* ARMOR THEME + PC RECOMMENDATION + FLAMER SAFETY PATCH */
+(function(){
+  const liveRecArmor=document.getElementById('liveRecArmor');
+  function refreshLiveRecArmor(){
+    if(!liveRec || !liveRecCard) return;
+    const pen=recPierceArmor(liveRec), th=armorTheme(pen);
+    liveRecCard.style.setProperty('--rec-armor', th.color);
+    liveRecCard.style.borderColor=th.color;
+    if(liveRecArmor){ liveRecArmor.textContent='관통: '+th.name; liveRecArmor.style.color=th.color; liveRecArmor.style.borderColor=th.color; }
+    const cn=document.getElementById('liveRecCollapsedName'); if(cn) cn.textContent=recName(liveRec);
+  }
+  const oldShow=showLiveRecommendation;
+  showLiveRecommendation=function(r){
+    const before=liveRec?recKey(liveRec):'';
+    oldShow(r);
+    refreshLiveRecArmor();
+    if(liveRecCard && liveRec && before!==recKey(liveRec)){
+      liveRecCard.classList.remove('recPulse'); void liveRecCard.offsetWidth; liveRecCard.classList.add('recPulse');
+    }
+  };
+  const oldRecCard=recCardHTML;
+  recCardHTML=function(r,i){
+    const html=oldRecCard(r,i);
+    return html.replace('<div class="rwhy">', `<div class="rarmorline">${recArmorHTML(r)}</div><div class="rwhy">`);
+  };
+  const oldRender=renderBuy;
+  renderBuy=function(){
+    oldRender();
+    try{
+      for(const it of buyList.querySelectorAll('.item')){
+        const spec=it.querySelector('.spec'); if(!spec) continue;
+        // 텍스트 기반 보정: 기존 스펙 안의 장갑명은 공통 팔레트 뱃지로 치환한다.
+        let h=spec.innerHTML;
+        for(let i=0;i<ARMOR_THEME.length;i++){
+          const n=ARMOR_THEME[i].name; const loose=n.replace('장갑',' 장갑');
+          const badge=armorLabelHTML(i);
+          h=h.replaceAll(n,badge).replaceAll(loose,badge);
+        }
+        spec.innerHTML=h;
+        const m=spec.querySelector('.armorBadge'); if(m){ it.dataset.armor='1'; it.style.setProperty('--armor-color',m.style.color); }
+      }
+    }catch(e){}
+  };
+  const oldUpdateHUD=updateHUD;
+  updateHUD=function(dt){
+    oldUpdateHUD(dt);
+    try{
+      let pen=0;
+      const sl=slots[activeSlot];
+      if(sl.type==='gun'){ const w=WEAPONS[sl.wi]; if(w) pen=w.pen||0; }
+      else if(sl.type==='tactical' || sl.type!=='gun'){ const v=TURRET_VARIANTS[turretVariant]; pen=v&&v.pen!=null?v.pen:3; }
+      const th=armorTheme(pen);
+      wArmor.textContent='관통: '+th.name;
+      wArmor.style.color=th.color; wArmor.style.borderColor=th.color;
+    }catch(e){}
+  };
+  const oldSync=syncLiveRecommendationLayout;
+  syncLiveRecommendationLayout=function(){
+    if(!isTouch && liveRecCard && !liveRecCard.classList.contains('hidden')){
+      liveRecCard.style.left=''; liveRecCard.style.right='22px';
+      liveRecCard.style.top='170px';
+      liveRecCard.style.width='min(360px,28vw)';
+      return;
+    }
+    oldSync();
+  };
+  const oldUpdateRecUI=updateRecommendationUI;
+  updateRecommendationUI=function(dt){
+    if(!isTouch){
+      if(liveRec){
+        liveRecTimer=Math.max(0,liveRecTimer-dt);
+        liveRecPeek=999;
+        liveRecCard.classList.remove('hidden','collapsed');
+        refreshLiveRecArmor(); syncLiveRecommendationLayout();
+      }
+      return;
+    }
+    oldUpdateRecUI(dt);
+  };
+})();
+
+/* PC AI REC MINIMAP ALIGNMENT PATCH */
+(function(){
+  function minimapRectForLiveRec(){
+    const r=canvas.getBoundingClientRect();
+    const mw=Math.max(150,Math.min(300,W*0.28));
+    const mh=mw*WORLD.h/WORLD.w;
+    const ox=W-mw-14;
+    const oy=Math.min(84,H*0.16);
+    return {left:Math.round(r.left+ox), top:Math.round(r.top+oy+mh+18), width:Math.round(mw)};
+  }
+  const _syncLiveRecommendationLayoutMiniMapAligned=syncLiveRecommendationLayout;
+  syncLiveRecommendationLayout=function(){
+    if(!isTouch && liveRecCard && !liveRecCard.classList.contains('hidden')){
+      const m=minimapRectForLiveRec();
+      liveRecCard.style.left=m.left+'px';
+      liveRecCard.style.right='auto';
+      liveRecCard.style.top=m.top+'px';
+      liveRecCard.style.width=m.width+'px';
+      liveRecCard.style.maxWidth=m.width+'px';
+      liveRecCard.classList.remove('collapsed');
+      return;
+    }
+    _syncLiveRecommendationLayoutMiniMapAligned();
+  };
+  const _updateRecommendationUIMiniMapAligned=updateRecommendationUI;
+  updateRecommendationUI=function(dt){
+    if(!isTouch){
+      if(liveRec){
+        // PC에서는 접히지 않고 미니맵 아래에 계속 유지한다.
+        liveRecTimer=Math.max(0,liveRecTimer-dt);
+        liveRecPeek=999;
+        liveRecCard.classList.remove('hidden','collapsed');
+        if(typeof refreshLiveRecArmor==='function') refreshLiveRecArmor();
+        syncLiveRecommendationLayout();
+      }
+      return;
+    }
+    _updateRecommendationUIMiniMapAligned(dt);
+  };
+  const _showLiveRecommendationMiniMapPulse=showLiveRecommendation;
+  showLiveRecommendation=function(r){
+    const before=liveRec?recKey(liveRec):'';
+    _showLiveRecommendationMiniMapPulse(r);
+    if(!isTouch && liveRecCard && liveRec && before!==recKey(liveRec)){
+      syncLiveRecommendationLayout();
+      liveRecCard.classList.remove('recPulse');
+      void liveRecCard.offsetWidth;
+      liveRecCard.classList.add('recPulse');
+    }
+  };
+})();
+
+
+
+/* FINAL PATCH: remove suicide drone and convert to flank gun drone */
+(function(){
+  function patchDroneType(){
+    if(typeof ETYPE!=='undefined' && ETYPE.droneEnemy){
+      Object.assign(ETYPE.droneEnemy, {
+        name:'우회 사격 드론',
+        hp:32,
+        armor:1,
+        speed:205,
+        reward:115,
+        melee:0,
+        rmin:18,
+        rmax:24,
+        ranged:true,
+        color:'#4fd6ff',
+        family:'drone',
+        flyer:true
+      });
+    }
+  }
+  patchDroneType();
+
+  function normalizeGunDrone(e){
+    if(!e) return e;
+    const isDrone = e.kind==='droneEnemy' || (e.type && e.type.family==='drone') || (e.ev && (e.ev.kind==='suicide' || e.ev.kind==='gunDrone'));
+    if(!isDrone) return e;
+    if(typeof ETYPE!=='undefined' && ETYPE.droneEnemy){ e.type=ETYPE.droneEnemy; e.kind='droneEnemy'; }
+    e.ev={kind:'gunDrone', label:'우회 사격 드론'};
+    e.type.ranged=true;
+    e.type.melee=0;
+    e.type.flyer=true;
+    e.flank = Number.isFinite(e.flank) ? e.flank : ((Math.random()<0.5?-1:1)*(1.35+Math.random()*0.45));
+    e.fire = Number.isFinite(e.fire) ? Math.max(e.fire,0.55) : (0.7+Math.random()*0.6);
+    e.vis = Math.max(e.vis||0, 680);
+    e.suicide=false;
+    return e;
+  }
+
+  if(typeof enemyVariant==='function'){
+    const prevEnemyVariant = enemyVariant;
+    enemyVariant=function(kind,t){
+      const v=prevEnemyVariant(kind,t);
+      if(kind==='droneEnemy' || (t && t.family==='drone')) return {kind:'gunDrone', label:'우회 사격 드론'};
+      if(v && v.kind==='suicide') return {kind:'gunDrone', label:'우회 사격 드론'};
+      return v;
+    };
+  }
+
+  if(typeof spawnEnemy==='function'){
+    const prevSpawnEnemy = spawnEnemy;
+    spawnEnemy=function(kind,x,y,role,home,pg,squad){
+      const before=(typeof enemies!=='undefined')?enemies.length:0;
+      const ret=prevSpawnEnemy(kind,x,y,role,home,pg,squad);
+      if(typeof enemies!=='undefined'){
+        for(let i=before;i<enemies.length;i++) normalizeGunDrone(enemies[i]);
+      }
+      return ret;
+    };
+  }
+
+  if(typeof updateEnemies==='function'){
+    const prevUpdateEnemies = updateEnemies;
+    updateEnemies=function(dt){
+      if(typeof enemies!=='undefined'){
+        for(const e of enemies){ if(e && (e.kind==='droneEnemy' || (e.ev&&e.ev.kind==='suicide'))) normalizeGunDrone(e); }
+      }
+      return prevUpdateEnemies(dt);
+    };
+  }
+
+  if(typeof fireEnemyShot==='function'){
+    const prevFireEnemyShot = fireEnemyShot;
+    fireEnemyShot=function(e,dx,dy){
+      if(e && (e.kind==='droneEnemy' || (e.ev&&e.ev.kind==='gunDrone'))){
+        e.ev={kind:'gunDrone',label:'우회 사격 드론'};
+        const a=(typeof enemyAimAngle==='function') ? enemyAimAngle(e,dx,dy,0.26) : Math.atan2(dy,dx);
+        if(typeof enemyBullet==='function') enemyBullet(e,a,3.2,560,'#bfe6ff',1.15,0);
+        return;
+      }
+      return prevFireEnemyShot(e,dx,dy);
+    };
+  }
+
+  if(typeof OPERATION_METAS!=='undefined'){
+    for(const m of OPERATION_METAS){
+      if(m && m.desc) m.desc=m.desc.replace(/우회 사격 드론/g,'우회 사격 드론').replace(/우회 사격 드론/g,'우회 사격 드론');
+      if(m && m.name && m.name.includes('폭발 압박')) m.desc='수류탄·미사일·우회 사격 드론이 위치를 계속 바꾸게 만드는 기계화 공세';
+    }
+  }
+  if(typeof BATTLE_THEMES!=='undefined'){
+    for(const m of BATTLE_THEMES){
+      if(m && m.desc) m.desc=m.desc.replace(/우회 사격 드론/g,'우회 사격 드론').replace(/우회 사격 드론/g,'우회 사격 드론');
+    }
+  }
+
+  if(typeof enemies!=='undefined') for(const e of enemies) normalizeGunDrone(e);
+})();
+
+
+/* FINAL FIX: PC recommendation minimap anchoring + hard remove suicide drone behavior */
+(function(){
+  function normalizeFlankDrone(e){
+    if(!e) return e;
+    const isDrone = e.kind==='droneEnemy' || (e.type && e.type.family==='drone') || (e.ev && (e.ev.kind==='suicide' || e.ev.kind==='gunDrone'));
+    if(!isDrone) return e;
+    if(typeof ETYPE!=='undefined' && ETYPE.droneEnemy){
+      e.type=ETYPE.droneEnemy;
+      e.kind='droneEnemy';
+      Object.assign(e.type,{name:'우회 사격 드론',family:'drone',flyer:true,ranged:true,melee:0,hp:Math.max(26,e.type.hp||0),rmin:18,rmax:24,speed:200,color:'#4fd6ff'});
+    }
+    e.ev={kind:'gunDrone',label:'우회 사격 드론'};
+    e.suicide=false;
+    e.type.melee=0;
+    e.type.ranged=true;
+    e.type.flyer=true;
+    e.flank = Number.isFinite(e.flank) ? e.flank : ((Math.random()<0.5?-1:1)*(1.55+Math.random()*0.35));
+    e.fire = Number.isFinite(e.fire) ? Math.max(e.fire,0.45) : (0.65+Math.random()*0.6);
+    e.vis = Math.max(e.vis||0,680);
+    return e;
+  }
+
+  if(typeof enemyVariant==='function'){
+    const prev=enemyVariant;
+    enemyVariant=function(kind,t){
+      if(kind==='droneEnemy' || (t && t.family==='drone') || (t && t.family==='special')) return {kind:'gunDrone',label:'우회 사격 드론'};
+      const v=prev(kind,t);
+      if(v && v.kind==='suicide') return {kind:'gunDrone',label:'우회 사격 드론'};
+      return v;
+    };
+  }
+  if(typeof spawnEnemy==='function'){
+    const prev=spawnEnemy;
+    spawnEnemy=function(kind,x,y,role,home,pg,squad){
+      const before=(typeof enemies!=='undefined')?enemies.length:0;
+      const ret=prev(kind,x,y,role,home,pg,squad);
+      if(typeof enemies!=='undefined'){
+        for(let i=before;i<enemies.length;i++) normalizeFlankDrone(enemies[i]);
+      }
+      return ret;
+    };
+  }
+  if(typeof updateEnemies==='function'){
+    const prev=updateEnemies;
+    updateEnemies=function(dt){
+      if(typeof enemies!=='undefined') for(const e of enemies) normalizeFlankDrone(e);
+      const ret=prev(dt);
+      if(typeof enemies!=='undefined') for(const e of enemies) normalizeFlankDrone(e);
+      return ret;
+    };
+  }
+  if(typeof fireEnemyShot==='function'){
+    const prev=fireEnemyShot;
+    fireEnemyShot=function(e,dx,dy){
+      if(e && (e.kind==='droneEnemy' || (e.ev && e.ev.kind==='gunDrone'))){
+        normalizeFlankDrone(e);
+        const a=(typeof enemyAimAngle==='function') ? enemyAimAngle(e,dx,dy,0.32) : Math.atan2(dy,dx);
+        if(typeof enemyBullet==='function') enemyBullet(e,a,2.4,520,'#bfe6ff',0.9,0);
+        return;
+      }
+      return prev(e,dx,dy);
+    };
+  }
+
+  // PC 추천 UI는 캔버스 내부 좌표(W/H)를 CSS 픽셀로 변환해서 미니맵 아래에 고정한다.
+  // 기존 버전은 내부 좌표를 그대로 DOM fixed 좌표로 써서 화면 중앙으로 밀리는 문제가 있었다.
+  function minimapRectCss(){
+    const cr=canvas.getBoundingClientRect();
+    const sx=cr.width/Math.max(1,W), sy=cr.height/Math.max(1,H);
+    const mw=Math.max(150,Math.min(300,W*0.28));
+    const mh=mw*WORLD.h/WORLD.w;
+    const ox=W-mw-14;
+    const oy=Math.min(84,H*0.16);
+    return {
+      left:Math.round(cr.left+ox*sx),
+      top:Math.round(cr.top+(oy+mh+18)*sy),
+      width:Math.round(mw*sx)
+    };
+  }
+  if(typeof syncLiveRecommendationLayout==='function'){
+    const prev=syncLiveRecommendationLayout;
+    syncLiveRecommendationLayout=function(){
+      if(!isTouch && liveRecCard && !liveRecCard.classList.contains('hidden')){
+        const m=minimapRectCss();
+        liveRecCard.style.position='fixed';
+        liveRecCard.style.left=m.left+'px';
+        liveRecCard.style.right='auto';
+        liveRecCard.style.top=m.top+'px';
+        liveRecCard.style.width=m.width+'px';
+        liveRecCard.style.maxWidth=m.width+'px';
+        liveRecCard.style.transform='none';
+        liveRecCard.classList.remove('collapsed');
+        return;
+      }
+      return prev();
+    };
+  }
+  if(typeof updateRecommendationUI==='function'){
+    const prev=updateRecommendationUI;
+    updateRecommendationUI=function(dt){
+      if(!isTouch){
+        if(liveRec){
+          liveRecTimer=Math.max(0,liveRecTimer-dt);
+          liveRecPeek=999;
+          liveRecCard.classList.remove('hidden','collapsed');
+          if(typeof refreshLiveRecArmor==='function') refreshLiveRecArmor();
+          syncLiveRecommendationLayout();
+        }
+        return;
+      }
+      return prev(dt);
+    };
+  }
+  if(typeof showLiveRecommendation==='function'){
+    const prev=showLiveRecommendation;
+    showLiveRecommendation=function(r){
+      const before=liveRec?recKey(liveRec):'';
+      prev(r);
+      if(!isTouch && liveRecCard && liveRec){
+        syncLiveRecommendationLayout();
+        if(before!==recKey(liveRec)){
+          liveRecCard.classList.remove('recPulse');
+          void liveRecCard.offsetWidth;
+          liveRecCard.classList.add('recPulse');
+        }
+      }
+    };
+  }
+})();
+
+
+/* FINAL HOTFIX: lock PC AI delivery recommendation card below minimap.
+   The minimap is drawn on canvas coordinates, so DOM fixed coordinates must be
+   derived from the same minimap formula and the canvas bounding rect. */
+(function(){
+  function getMinimapCssRectForRecommendation(){
+    const cr=canvas.getBoundingClientRect();
+    const sx=cr.width/Math.max(1,W);
+    const sy=cr.height/Math.max(1,H);
+    const mw=Math.max(150,Math.min(300,W*0.28));
+    const mh=mw*WORLD.h/WORLD.w;
+    const ox=W-mw-14;
+    const oy=Math.min(84,H*0.16);
+    const gap=16;
+    return {
+      left:Math.round(cr.left+ox*sx),
+      top:Math.round(cr.top+(oy+mh+gap)*sy),
+      width:Math.round(mw*sx)
+    };
+  }
+  function placePcRecommendationUnderMinimap(){
+    if(isTouch || !liveRecCard || liveRecCard.classList.contains('hidden')) return false;
+    const m=getMinimapCssRectForRecommendation();
+    liveRecCard.style.position='fixed';
+    liveRecCard.style.left=m.left+'px';
+    liveRecCard.style.right='auto';
+    liveRecCard.style.top=m.top+'px';
+    liveRecCard.style.bottom='auto';
+    liveRecCard.style.width=m.width+'px';
+    liveRecCard.style.maxWidth=m.width+'px';
+    liveRecCard.style.transform='none';
+    liveRecCard.classList.remove('collapsed');
+    return true;
+  }
+  const prevSync=syncLiveRecommendationLayout;
+  syncLiveRecommendationLayout=function(){
+    if(placePcRecommendationUnderMinimap()) return;
+    return prevSync();
+  };
+  const prevUpdate=updateRecommendationUI;
+  updateRecommendationUI=function(dt){
+    if(!isTouch && liveRec){
+      liveRecTimer=Math.max(0,liveRecTimer-dt);
+      liveRecPeek=999;
+      liveRecCard.classList.remove('hidden','collapsed');
+      if(typeof refreshLiveRecArmor==='function') refreshLiveRecArmor();
+      placePcRecommendationUnderMinimap();
+      return;
+    }
+    return prevUpdate(dt);
+  };
+  const prevShow=showLiveRecommendation;
+  showLiveRecommendation=function(r){
+    const before=liveRec?recKey(liveRec):'';
+    prevShow(r);
+    if(!isTouch && liveRecCard && liveRec){
+      placePcRecommendationUnderMinimap();
+      if(before!==recKey(liveRec)){
+        liveRecCard.classList.remove('recPulse');
+        void liveRecCard.offsetWidth;
+        liveRecCard.classList.add('recPulse');
+      }
+    }
+  };
+  addEventListener('resize',()=>{ placePcRecommendationUnderMinimap(); });
+})();
+
+
+/* HARD FIX 2: PC AI 배송추천 카드 위치를 매 프레임 미니맵 아래로 강제한다. 모바일/터치 UI는 건드리지 않는다. */
+(function(){
+  const MAP_RATIO = 10000 / 13400;
+  function pcMapRect(){
+    const vw = window.innerWidth || W || 1;
+    const vh = window.innerHeight || H || 1;
+    const mw = Math.max(150, Math.min(300, vw * 0.28));
+    const mh = mw * MAP_RATIO;
+    const ox = vw - mw - 14;
+    const oy = Math.min(84, vh * 0.16);
+    return { left:Math.round(ox), top:Math.round(oy + mh + 18), width:Math.round(mw) };
+  }
+  function forcePcRecUnderMinimap(){
+    if(typeof isTouch !== 'undefined' && isTouch) return false;
+    if(typeof liveRecCard === 'undefined' || !liveRecCard || liveRecCard.classList.contains('hidden')) return false;
+    const m = pcMapRect();
+    liveRecCard.style.setProperty('position','fixed','important');
+    liveRecCard.style.setProperty('left', m.left + 'px', 'important');
+    liveRecCard.style.setProperty('right', 'auto', 'important');
+    liveRecCard.style.setProperty('top', m.top + 'px', 'important');
+    liveRecCard.style.setProperty('bottom', 'auto', 'important');
+    liveRecCard.style.setProperty('width', m.width + 'px', 'important');
+    liveRecCard.style.setProperty('max-width', m.width + 'px', 'important');
+    liveRecCard.style.setProperty('transform', 'none', 'important');
+    liveRecCard.classList.remove('collapsed');
+    return true;
+  }
+  if(typeof syncLiveRecommendationLayout === 'function'){
+    const prevSync = syncLiveRecommendationLayout;
+    syncLiveRecommendationLayout = function(){
+      if(forcePcRecUnderMinimap()) return;
+      return prevSync();
+    };
+  }
+  if(typeof updateRecommendationUI === 'function'){
+    const prevUpdate = updateRecommendationUI;
+    updateRecommendationUI = function(dt){
+      const ret = prevUpdate(dt);
+      forcePcRecUnderMinimap();
+      return ret;
+    };
+  }
+  if(typeof showLiveRecommendation === 'function'){
+    const prevShow = showLiveRecommendation;
+    showLiveRecommendation = function(r){
+      const ret = prevShow(r);
+      forcePcRecUnderMinimap();
+      return ret;
+    };
+  }
+  window.addEventListener('resize', forcePcRecUnderMinimap);
 })();
 
 </script>
