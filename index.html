@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -248,6 +248,22 @@
   #shipPanel .state{font-size:.78rem;color:#9fe0ff;margin-bottom:8px;}
   #shipPanel .desc{font-size:.84rem;line-height:1.45;color:#d9e6f2;}
   #shipPanel .action{margin-top:10px;color:#7CFFB2;font-size:.82rem;font-weight:900;}
+  /* OUTGAME PHASE 2: 시설 프레임워크 / Placeholder UI */
+  #facilityModal{position:fixed;inset:0;z-index:14;display:flex;align-items:center;justify-content:center;background:rgba(3,6,12,.72);padding:18px;color:#fff;text-shadow:0 0 5px #000;}
+  #facilityModal .fbox{width:min(560px,94vw);background:rgba(17,22,31,.97);border:2px solid rgba(255,212,93,.86);border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.72);padding:18px 20px;}
+  #facilityModal .ftop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;}
+  #facilityModal h2{margin:0;color:#ffd45d;font-size:1.28rem;}
+  #facilityModal .fstate{color:#9fe0ff;font-size:.82rem;font-weight:900;margin-top:3px;}
+  #facilityModal .fdesc{color:#d9e6f2;font-size:.9rem;line-height:1.5;margin:12px 0;padding:12px;border-radius:10px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.10);}
+  #facilityModal .fmeta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0;font-size:.78rem;color:#b8c8d8;}
+  #facilityModal .fmeta div{padding:8px;border-radius:8px;background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.08);}
+  #facilityModal .factions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;flex-wrap:wrap;}
+  #facilityModal button{border:0;border-radius:8px;padding:10px 14px;font-weight:900;cursor:pointer;text-shadow:none;}
+  #facilityModal .primary{background:#ffd45d;color:#151515;}
+  #facilityModal .secondary{background:#2a2f3a;color:#d7e5f3;border:1px solid #4a5568;}
+  #facilityModal .disabled{opacity:.45;cursor:default;}
+  #shipPanel .buildbar{height:8px;margin-top:9px;border-radius:999px;background:rgba(0,0,0,.38);border:1px solid rgba(255,255,255,.14);overflow:hidden;}
+  #shipPanel .buildbar span{display:block;height:100%;background:linear-gradient(90deg,#ff8a3b,#ffd45d);width:0%;}
   @media (max-width:900px), (max-height:560px){
     #shipHud .shipTitle{font-size:14px;top:8px;left:10px;}
     #shipHud .shipSub{font-size:10px;top:30px;left:10px;max-width:46vw;}
@@ -320,6 +336,24 @@ body:not(.touch) #liveRecCard.collapsed{
     <div class="state" id="shipPanelState">상태</div>
     <div class="desc" id="shipPanelDesc">설명</div>
     <div class="action" id="shipPanelAction">E: 상호작용</div>
+  </div>
+
+  <div id="facilityModal" class="hidden">
+    <div class="fbox">
+      <div class="ftop">
+        <div>
+          <h2 id="facilityModalTitle">시설</h2>
+          <div class="fstate" id="facilityModalState">상태</div>
+        </div>
+        <button class="secondary" id="facilityModalClose">×</button>
+      </div>
+      <div class="fdesc" id="facilityModalDesc">Placeholder</div>
+      <div class="fmeta">
+        <div>Interaction<br><b id="facilityModalInteraction">placeholder</b></div>
+        <div>Module Position<br><b id="facilityModalPosition">-</b></div>
+      </div>
+      <div class="factions" id="facilityModalActions"></div>
+    </div>
   </div>
 
   <div id="damage"></div>
@@ -1337,17 +1371,89 @@ let shipPlayer={x:1200,y:560,r:15,aim:-Math.PI/2,speed:230};
 let shipCam={x:0,y:0};
 let shipFocus=null;
 const SHIP={w:2400,h:900,corridor:{x:120,y:300,w:2160,h:300}};
+const FACILITY_STATE={LOCKED:"LOCKED",BUILDABLE:"BUILDABLE",BUILDING:"BUILDING",ACTIVE:"ACTIVE"};
+const FACILITY_BUILD_TIME=3.0;
 const SHIP_FACILITIES=[
-  {id:"launch",name:"출격 베이",en:"Launch Bay",x:1200,y:660,side:"bottom",open:true,icon:"🚀",state:"사용 가능",desc:"가장 가까운 핵심 동선입니다. 이곳에서 미션 선택 단말을 열고 착륙정 출격을 준비합니다.",action:"E: 작전 출격"},
-  {id:"bridge",name:"브리지",en:"Bridge",x:1200,y:240,side:"top",open:false,icon:"🛰️",state:"기능 준비중",desc:"행성 궤도, 작전 계약, 함선 항로를 관리하는 지휘 구역입니다. 미션 선택 기능은 출격 베이에서 우선 제공되며, 브리지는 이후 확장 단계에서 개방됩니다."},
-  {id:"logistics",name:"물류센터",en:"Logistics Hub",x:820,y:240,side:"top",open:false,icon:"📦",state:"모듈 잠김",desc:"화력 배송과 보급 캡슐을 통제하는 핵심 시설입니다. 아직 기능이 구현되지 않았으므로 LOCKED 처리되어 있으며, 이후 배송시간, 동시배송, 보험배송 성장이 연결됩니다."},
-  {id:"armory",name:"무기고",en:"Armory",x:520,y:660,side:"bottom",open:false,icon:"🔫",state:"모듈 미도킹",desc:"개인 장비와 기본 무기를 관리할 시설입니다. 아직 외벽 모듈이 도킹되지 않아 출입문이 잠겨 있습니다."},
-  {id:"research",name:"연구소",en:"R&D Lab",x:520,y:240,side:"top",open:false,icon:"🧪",state:"모듈 미도킹",desc:"신무기, 탄종, 실험 병기 설계도를 연구할 시설입니다. 건설 시 우주에서 연구 모듈이 도킹되고 문이 열립니다."},
-  {id:"trade",name:"자유무역구",en:"Free Trade Zone",x:1580,y:660,side:"bottom",open:false,icon:"⚖️",state:"상인 입점 대기",desc:"여러 기업과 상인이 입점하는 우주 교역 구역입니다. 무기회사, 드론업체, 보험상, 암시장으로 확장됩니다."},
-  {id:"factory",name:"군수공장",en:"Manufacturing Bay",x:1880,y:240,side:"top",open:false,icon:"🏭",state:"모듈 미도킹",desc:"포탑, 폭탄, 드론, 특수 화물을 생산하는 병기 제작 라인입니다."},
-  {id:"drone",name:"드론 격납고",en:"Drone Hangar",x:2060,y:660,side:"bottom",open:false,icon:"🤖",state:"모듈 미도킹",desc:"전투 드론을 정비하고 개조하는 격납고입니다. 이후 드론 해금과 재보급 성장이 연결됩니다."},
-  {id:"ai",name:"AI 관제센터",en:"AI Control",x:2140,y:240,side:"top",open:false,icon:"🧠",state:"코어 미장착",desc:"전장 분석과 AI 배송추천을 강화하는 관제 모듈입니다."}
+  {id:"launch",name:"출격 베이",en:"Launch Bay",state:FACILITY_STATE.ACTIVE,cost:0,interactionType:"missionSelect",modulePosition:{x:1200,y:660,side:"bottom"},icon:"🚀",desc:"가장 가까운 핵심 동선입니다. 이곳에서 미션 선택 단말을 열고 착륙정 출격을 준비합니다."},
+  {id:"bridge",name:"브리지",en:"Bridge",state:FACILITY_STATE.BUILDABLE,cost:500,interactionType:"placeholder_bridge",modulePosition:{x:1200,y:240,side:"top"},icon:"🛰️",desc:"행성 궤도, 작전 계약, 함선 항로를 관리하는 지휘 구역입니다."},
+  {id:"logistics",name:"물류센터",en:"Logistics Hub",state:FACILITY_STATE.BUILDABLE,cost:700,interactionType:"placeholder_logistics",modulePosition:{x:820,y:240,side:"top"},icon:"📦",desc:"화력 배송과 보급 캡슐을 통제하는 핵심 시설입니다. 이후 배송시간, 동시배송, 보험배송 성장이 연결됩니다."},
+  {id:"weaponBench",name:"무기 작업대",en:"Weapon Bench",state:FACILITY_STATE.BUILDABLE,cost:650,interactionType:"placeholder_weaponBench",modulePosition:{x:520,y:660,side:"bottom"},icon:"🔫",desc:"기본 무기, 화력 무기, 탄종, 장비 제작을 담당할 시설입니다."},
+  {id:"research",name:"연구소",en:"R&D Lab",state:FACILITY_STATE.BUILDABLE,cost:800,interactionType:"placeholder_research",modulePosition:{x:520,y:240,side:"top"},icon:"🧪",desc:"신무기, 탄종, 실험 병기 설계도를 연구할 시설입니다."},
+  {id:"medical",name:"의료 시설",en:"Medical Bay",state:FACILITY_STATE.BUILDABLE,cost:450,interactionType:"placeholder_medical",modulePosition:{x:1550,y:240,side:"top"},icon:"🏥",desc:"회복, 부활, 치료제 보급과 관련된 성장을 담당할 시설입니다."},
+  {id:"storage",name:"저장고",en:"Storage",state:FACILITY_STATE.BUILDABLE,cost:400,interactionType:"placeholder_storage",modulePosition:{x:1580,y:660,side:"bottom"},icon:"🧰",desc:"장비 보관량, 회수 물자, 제작 재료 보관을 담당할 시설입니다."},
+  {id:"contract",name:"방산 계약실",en:"Defense Contract Office",state:FACILITY_STATE.BUILDABLE,cost:900,interactionType:"placeholder_contract",modulePosition:{x:1880,y:240,side:"top"},icon:"📑",desc:"특수 중화기, 기업 계약, 고위험 고보상 배송 계약을 관리할 시설입니다."},
+  {id:"factory",name:"군수공장",en:"Manufacturing Bay",state:FACILITY_STATE.BUILDABLE,cost:850,interactionType:"placeholder_factory",modulePosition:{x:1880,y:660,side:"bottom"},icon:"🏭",desc:"포탑, 폭탄, 드론, 특수 화물을 생산하는 병기 제작 라인입니다."},
+  {id:"drone",name:"드론 센터",en:"Drone Center",state:FACILITY_STATE.BUILDABLE,cost:750,interactionType:"placeholder_drone",modulePosition:{x:2160,y:660,side:"bottom"},icon:"🤖",desc:"전투 드론을 정비하고 개조하는 격납고입니다. 이후 드론 해금과 재보급 성장이 연결됩니다."},
+  {id:"ai",name:"AI 관제센터",en:"AI Control",state:FACILITY_STATE.BUILDABLE,cost:700,interactionType:"placeholder_ai",modulePosition:{x:2160,y:240,side:"top"},icon:"🧠",desc:"전장 분석과 AI 배송추천을 강화하는 관제 모듈입니다."}
 ];
+const FacilityManager={
+  facilities:SHIP_FACILITIES,
+  active:null,
+  load(){
+    try{ const raw=localStorage.getItem("DTD_FACILITY_STATES_V1"); if(!raw) return; const saved=JSON.parse(raw);
+      for(const f of this.facilities){ if(f.id!=="launch" && saved[f.id] && FACILITY_STATE[saved[f.id]]) f.state=saved[f.id]; }
+    }catch(e){}
+  },
+  save(){
+    try{ const out={}; for(const f of this.facilities) out[f.id]=f.state; localStorage.setItem("DTD_FACILITY_STATES_V1",JSON.stringify(out)); }catch(e){}
+  },
+  pos(f){ return f.modulePosition || {x:f.x,y:f.y,side:f.side||"top"}; },
+  doorPoint(f){ const p=this.pos(f); return {x:p.x,y:p.side==="top"?300:600}; },
+  isActive(f){ return f && f.state===FACILITY_STATE.ACTIVE; },
+  isBuildable(f){ return f && f.state===FACILITY_STATE.BUILDABLE; },
+  canInteract(f){ return !!f && f.state!==FACILITY_STATE.LOCKED; },
+  startBuild(f){
+    if(!this.isBuildable(f)) return false;
+    f.state=FACILITY_STATE.BUILDING; f.buildT=FACILITY_BUILD_TIME; f.buildMax=FACILITY_BUILD_TIME; this.save();
+    shipNoticeT=1.6; if(typeof toast==="function") toast(`🛠️ ${f.name} 모듈 도킹 시작`);
+    this.closeModal(); showShipPanel(f,true); return true;
+  },
+  update(dt){
+    let changed=false;
+    for(const f of this.facilities){
+      if(f.state===FACILITY_STATE.BUILDING){
+        f.buildT=Math.max(0,(f.buildT||0)-dt);
+        if(f.buildT<=0){ f.state=FACILITY_STATE.ACTIVE; f.buildT=0; changed=true; shipNoticeT=2.0; if(typeof toast==="function") toast(`✅ ${f.name} ACTIVE`); }
+      }
+    }
+    if(changed) this.save();
+  },
+  interact(f){
+    if(!f) return;
+    if(f.interactionType==="missionSelect" && f.state===FACILITY_STATE.ACTIVE){ launchFromShip(); return; }
+    if(f.state===FACILITY_STATE.BUILDABLE){ this.openModal(f,"build"); return; }
+    if(f.state===FACILITY_STATE.BUILDING){ this.openModal(f,"building"); return; }
+    if(f.state===FACILITY_STATE.ACTIVE){ this.openModal(f,"placeholder"); return; }
+    this.openModal(f,"locked");
+  },
+  placeholderText(f){
+    return `${f.name} 기능은 아직 연결되지 않았습니다.\n\nPhase 2에서는 모든 시설을 동일한 구조로 건설/상호작용 가능한 상태까지 만드는 것이 목표입니다. 실제 기능은 이후 Phase에서 interactionType=${f.interactionType} 모듈로 연결합니다.`;
+  },
+  openModal(f,mode="placeholder"){
+    this.active=f;
+    if(!facilityModal) return;
+    facilityModalTitle.textContent=`${f.icon} ${f.name}`;
+    facilityModalState.textContent=`상태: ${f.state}`;
+    facilityModalInteraction.textContent=f.interactionType;
+    const p=this.pos(f); facilityModalPosition.textContent=`${p.side} / ${Math.round(p.x)}, ${Math.round(p.y)}`;
+    let desc=f.desc;
+    if(mode==="build") desc+=`\n\n건설 비용: ${f.cost} C\n건설하면 ${FACILITY_BUILD_TIME}초 후 ACTIVE 상태가 됩니다.`;
+    else if(mode==="building") desc+=`\n\n모듈 도킹 중입니다. 완료까지 ${Math.ceil(f.buildT||0)}초 남았습니다.`;
+    else if(mode==="placeholder") desc=this.placeholderText(f);
+    else if(mode==="locked") desc+=`\n\nLOCKED 상태입니다. 선행 조건이 이후 Phase에서 연결됩니다.`;
+    facilityModalDesc.textContent=desc;
+    facilityModalActions.innerHTML="";
+    if(mode==="build"){
+      const b=document.createElement("button"); b.className="primary"; b.textContent=`건설 시작 (${f.cost} C)`; b.onclick=()=>this.startBuild(f); facilityModalActions.appendChild(b);
+    }else if(mode==="placeholder"){
+      const b=document.createElement("button"); b.className="primary disabled"; b.textContent="기능 개발 예정"; b.disabled=true; facilityModalActions.appendChild(b);
+    }
+    const c=document.createElement("button"); c.className="secondary"; c.textContent="닫기"; c.onclick=()=>this.closeModal(); facilityModalActions.appendChild(c);
+    facilityModal.classList.remove("hidden");
+  },
+  closeModal(){ if(facilityModal) facilityModal.classList.add("hidden"); this.active=null; }
+};
+FacilityManager.load();
 
 const keys={}; let mouse={x:0,y:0}; let cam={x:0,y:0};
 
@@ -1368,6 +1474,7 @@ const beaconVal=document.getElementById("beaconVal"),cdVal=document.getElementBy
 const logEl=document.getElementById("log");
 const shipHud=document.getElementById("shipHud"),shipPanel=document.getElementById("shipPanel"),shipHint=document.getElementById("shipHint");
 const shipPanelTitle=document.getElementById("shipPanelTitle"),shipPanelState=document.getElementById("shipPanelState"),shipPanelDesc=document.getElementById("shipPanelDesc"),shipPanelAction=document.getElementById("shipPanelAction");
+const facilityModal=document.getElementById("facilityModal"),facilityModalTitle=document.getElementById("facilityModalTitle"),facilityModalState=document.getElementById("facilityModalState"),facilityModalDesc=document.getElementById("facilityModalDesc"),facilityModalInteraction=document.getElementById("facilityModalInteraction"),facilityModalPosition=document.getElementById("facilityModalPosition"),facilityModalActions=document.getElementById("facilityModalActions"),facilityModalClose=document.getElementById("facilityModalClose");
 
 let W=0,H=0;
 function resize(){W=canvas.width=innerWidth;H=canvas.height=innerHeight;}
@@ -1384,7 +1491,7 @@ addEventListener("keydown",e=>{
   if(e.code==="KeyM"){ setTouch(!isTouch); pushLog(isTouch?"📱 모바일 HUD 미리보기 ON (마우스로 조작)":"🖥️ 모바일 HUD OFF","#9fe0ff"); return; }   // PC 테스트용 토글
   if(e.code==="F9"){ debugToggle(); e.preventDefault(); return; }
   if(appMode==="ship"){
-    if(e.code==="Escape"){ e.preventDefault(); return; }   // Phase 1: 처음부터 우주선이 메인 화면이므로 별도 메뉴로 빠지지 않는다.
+    if(e.code==="Escape"){ if(facilityModal&&!facilityModal.classList.contains("hidden")) FacilityManager.closeModal(); e.preventDefault(); return; }   // Phase 1: 처음부터 우주선이 메인 화면이므로 별도 메뉴로 빠지지 않는다.
     if(e.code==="KeyE"){ shipInteract(); e.preventDefault(); return; }
   }
   if(appMode==="missionSelect"){
@@ -1430,6 +1537,8 @@ addEventListener("blur",()=>{ firing=false; });
 canvas.addEventListener("wheel",e=>{ if(running && !buyOpen){ swapSlot(); e.preventDefault(); } },{passive:false});
 startBtn.addEventListener("click",handleStartButton);
 if(missionCloseBtn) missionCloseBtn.addEventListener("click",e=>{ e.preventDefault(); if(appMode==="missionSelect") closeMissionSelect(); });
+if(facilityModalClose) facilityModalClose.addEventListener("click",e=>{ e.preventDefault(); FacilityManager.closeModal(); });
+if(facilityModal) facilityModal.addEventListener("pointerdown",e=>{ if(e.target===facilityModal) FacilityManager.closeModal(); });
 reviveBtn.addEventListener("pointerup",e=>{ e.preventDefault(); doRevive(); });
 // ----- 난이도 선택 UI -----
 function renderDiffSel(){
@@ -1537,7 +1646,7 @@ function showInitialMenu(){
   if(assistToggle) assistToggle.style.display="none";
   if(missionCloseBtn) missionCloseBtn.classList.add("hidden");
   reviveBtn.style.display="none"; startBtn.textContent="우주선 입장";
-  document.getElementById("hud").classList.add("hidden"); shipHud.classList.add("hidden"); shipPanel.classList.add("hidden");
+  document.getElementById("hud").classList.add("hidden"); shipHud.classList.add("hidden"); shipPanel.classList.add("hidden"); FacilityManager.closeModal();
   buyMenu.classList.add("hidden"); startRecommend.classList.add("hidden"); liveRecCard.classList.add("hidden"); damageEl.style.opacity="0";
   overlay.classList.remove("hidden");
 }
@@ -1547,7 +1656,7 @@ function enterShip(reason="initial"){
   overlay.classList.add("hidden"); buyMenu.classList.add("hidden"); startRecommend.classList.add("hidden");
   document.getElementById("hud").classList.add("hidden");
   liveRecCard.classList.add("hidden"); damageEl.style.opacity="0";
-  shipHud.classList.remove("hidden"); shipPanel.classList.add("hidden");
+  shipHud.classList.remove("hidden"); shipPanel.classList.add("hidden"); FacilityManager.closeModal();
   appMode="ship"; missionReturnMode=null; shipRunning=true; running=false; buyOpen=false; startRecOpen=false; deathPending=false; firing=false;
   // Phase 1 확장성: 우주선 복귀 시에는 출격 베이 근처에 내려 동선을 짧게 유지한다.
   if(reason==="return_win" || reason==="return_fail" || reason==="return_down"){ shipPlayer.x=1200; shipPlayer.y=625; shipPlayer.aim=-Math.PI/2; }
@@ -1556,7 +1665,7 @@ function enterShip(reason="initial"){
   shipLastTime=performance.now(); requestAnimationFrame(shipLoop);
 }
 function openMissionSelect(){
-  missionReturnMode=null; appMode="missionSelect"; shipRunning=false; shipPanel.classList.add("hidden");
+  missionReturnMode=null; appMode="missionSelect"; shipRunning=false; shipPanel.classList.add("hidden"); FacilityManager.closeModal();
   renderDiffSel();
   showOverlay("🛰️ 작전 선택", "출격 베이 관제 단말에서 이번 작전 난이도와 적 조합을 선택하세요.", "작전 시작", false, true);
   shipHud.classList.remove("hidden");
@@ -1565,7 +1674,7 @@ function closeMissionSelect(){
   overlay.classList.add("hidden"); if(missionCloseBtn) missionCloseBtn.classList.add("hidden"); appMode="ship"; shipRunning=true; shipLastTime=performance.now(); requestAnimationFrame(shipLoop);
 }
 function launchSelectedMission(){
-  missionReturnMode=null; shipRunning=false; appMode="mission"; shipHud.classList.add("hidden"); shipPanel.classList.add("hidden");
+  missionReturnMode=null; shipRunning=false; appMode="mission"; shipHud.classList.add("hidden"); shipPanel.classList.add("hidden"); FacilityManager.closeModal();
   document.getElementById("hud").classList.remove("hidden");
   started=false; startOrResume();
 }
@@ -1583,8 +1692,8 @@ function returnToShip(result="fail"){
 function nearestShipFacility(){
   let best=null,bd=1e9;
   for(const f of SHIP_FACILITIES){
-    const dy=f.side==="top"?300:600;
-    const d=Math.hypot(shipPlayer.x-f.x, shipPlayer.y-dy);
+    const p=FacilityManager.doorPoint(f);
+    const d=Math.hypot(shipPlayer.x-p.x, shipPlayer.y-p.y);
     if(d<bd){ bd=d; best=f; }
   }
   return bd<120?best:null;
@@ -1592,18 +1701,30 @@ function nearestShipFacility(){
 function shipInteract(){
   const f=nearestShipFacility();
   if(!f){ shipNoticeT=1.2; return; }
-  if(f.id==="launch"){ launchFromShip(); return; }
-  showShipPanel(f,true);
+  FacilityManager.interact(f);
 }
 function showShipPanel(f,force){
   if(!f){ shipPanel.classList.add("hidden"); return; }
+  const p=FacilityManager.pos(f);
   shipPanelTitle.textContent=`${f.icon} ${f.name} (${f.en})`;
-  shipPanelState.textContent=f.open?`상태: ${f.state}`:`상태: ${f.state} · LOCKED`;
+  const remain=f.state===FACILITY_STATE.BUILDING ? ` · 도킹 ${Math.ceil(f.buildT||0)}초` : "";
+  shipPanelState.textContent=`상태: ${f.state}${remain}`;
   shipPanelDesc.textContent=f.desc;
-  shipPanelAction.textContent=f.id==="launch"?"E: 미션 선택":(f.open?"E: 시설 이용":"LOCKED · 기능 미구현");
+  if(f.interactionType==="missionSelect") shipPanelAction.textContent="E: 미션 선택";
+  else if(f.state===FACILITY_STATE.BUILDABLE) shipPanelAction.textContent=`E: 건설 시작 · 비용 ${f.cost}C`;
+  else if(f.state===FACILITY_STATE.BUILDING) shipPanelAction.textContent="E: 건설 진행 확인";
+  else if(f.state===FACILITY_STATE.ACTIVE) shipPanelAction.textContent="E: Placeholder UI";
+  else shipPanelAction.textContent="LOCKED · 선행 조건 필요";
+  const old=shipPanel.querySelector(".buildbar"); if(old) old.remove();
+  if(f.state===FACILITY_STATE.BUILDING){
+    const bar=document.createElement("div"); bar.className="buildbar"; const span=document.createElement("span");
+    const pct=100*(1-(f.buildT||0)/(f.buildMax||FACILITY_BUILD_TIME)); span.style.width=`${Math.max(0,Math.min(100,pct))}%`;
+    bar.appendChild(span); shipPanel.appendChild(bar);
+  }
   shipPanel.classList.remove("hidden");
 }
 function updateShip(dt){
+  FacilityManager.update(dt);
   // 인게임과 동일한 기본 조작: WASD/좌스틱 이동, Shift/스틱 끝 질주, 마우스/우스틱 조준.
   let mx=(keys.KeyD?1:0)-(keys.KeyA?1:0), my=(keys.KeyS?1:0)-(keys.KeyW?1:0);
   if(touchMove.active){ mx=touchMove.x; my=touchMove.y; }
@@ -1664,7 +1785,7 @@ function renderShip(){
   // 플레이어
   ctx.save(); ctx.translate(shipPlayer.x,shipPlayer.y); ctx.rotate(shipPlayer.aim); ctx.fillStyle="#d8e8f8"; ctx.beginPath(); ctx.arc(0,0,shipPlayer.r,0,Math.PI*2); ctx.fill(); ctx.fillStyle="#7fd0ff"; ctx.fillRect(6,-4,18,8); ctx.strokeStyle="#0b1118"; ctx.lineWidth=3; ctx.stroke(); ctx.restore();
   // 안내 마커
-  if(shipFocus){ const fy=shipFocus.side==="top"?300:600; ctx.fillStyle="#ffd45d"; ctx.font="bold 18px Malgun Gothic, sans-serif"; ctx.textAlign="center"; ctx.fillText("E",shipFocus.x,fy+(shipFocus.side==="top"?34:-24)); }
+  if(shipFocus){ const pp=FacilityManager.doorPoint(shipFocus), ps=FacilityManager.pos(shipFocus); ctx.fillStyle="#ffd45d"; ctx.font="bold 18px Malgun Gothic, sans-serif"; ctx.textAlign="center"; ctx.fillText("E",pp.x,pp.y+(ps.side==="top"?34:-24)); }
   ctx.restore();
   // 화면 고정 오버레이 안내
   if(shipNoticeT>0){ ctx.fillStyle=`rgba(255,212,93,${Math.min(.9,shipNoticeT)})`; ctx.font="bold 22px Malgun Gothic, sans-serif"; ctx.textAlign="center"; ctx.fillText("우주 물류선 메인 스트리트",W/2,90); }
@@ -1672,25 +1793,38 @@ function renderShip(){
   drawTouchHUD();
 }
 function drawShipFacility(f){
-  const top=f.side==="top", doorY=top?286:600, modY=top?132:626, h=126, w=f.id==="trade"?250:190;
-  const x=f.x-w/2;
-  // 외부 도킹 모듈/잠긴 빈 슬롯
-  ctx.fillStyle=f.open?"#172431":"#14171c"; ctx.strokeStyle=f.open?"#557a95":"#4b3131"; ctx.lineWidth=2;
-  ctx.fillRect(x,modY,w,h); ctx.strokeRect(x,modY,w,h);
-  if(!f.open){ ctx.fillStyle="rgba(255,70,70,.12)"; ctx.fillRect(x+8,modY+8,w-16,h-16); }
+  const p=FacilityManager.pos(f), top=p.side==="top", doorY=top?286:600, modY=top?132:626;
+  const h=126, w=f.id==="storage"?250:190, x=p.x-w/2;
+  const active=f.state===FACILITY_STATE.ACTIVE, buildable=f.state===FACILITY_STATE.BUILDABLE, building=f.state===FACILITY_STATE.BUILDING;
+  const locked=f.state===FACILITY_STATE.LOCKED;
+  // 외부 도킹 모듈/잠긴 빈 슬롯/건설 중 모듈
+  let fill=active?"#172431":(building?"#2a2416":(buildable?"#141b22":"#14171c"));
+  let stroke=active?"#557a95":(building?"#ffd45d":(buildable?"#7fd0ff":"#4b3131"));
+  ctx.fillStyle=fill; ctx.strokeStyle=stroke; ctx.lineWidth=2; ctx.fillRect(x,modY,w,h); ctx.strokeRect(x,modY,w,h);
+  if(buildable){ ctx.fillStyle="rgba(127,208,255,.10)"; ctx.fillRect(x+8,modY+8,w-16,h-16); }
+  if(building){
+    const pct=1-(f.buildT||0)/(f.buildMax||FACILITY_BUILD_TIME);
+    ctx.fillStyle="rgba(255,212,93,.16)"; ctx.fillRect(x+8,modY+8,(w-16)*Math.max(0,Math.min(1,pct)),h-16);
+    ctx.strokeStyle="rgba(255,212,93,.55)"; ctx.beginPath(); ctx.arc(p.x,modY+64,52+Math.sin(performance.now()/120)*4,0,Math.PI*2); ctx.stroke();
+  }
+  if(locked){ ctx.fillStyle="rgba(255,70,70,.12)"; ctx.fillRect(x+8,modY+8,w-16,h-16); }
   // 연결 통로와 문
-  ctx.fillStyle=f.open?"rgba(127,208,255,.18)":"rgba(255,80,80,.12)"; ctx.fillRect(f.x-38,top?258:600,76,top?42:42);
-  ctx.fillStyle=f.open?"#263848":"#2a1c1e"; ctx.fillRect(f.x-58,doorY,116,16);
-  ctx.strokeStyle=f.open?"#7fd0ff":"#ff5d5d"; ctx.strokeRect(f.x-58,doorY,116,16);
+  ctx.fillStyle=active?"rgba(127,208,255,.18)":(building?"rgba(255,212,93,.15)":(buildable?"rgba(127,208,255,.10)":"rgba(255,80,80,.12)"));
+  ctx.fillRect(p.x-38,top?258:600,76,42);
+  ctx.fillStyle=active?"#263848":(building?"#3a311d":(buildable?"#203242":"#2a1c1e")); ctx.fillRect(p.x-58,doorY,116,16);
+  ctx.strokeStyle=active?"#7fd0ff":(building?"#ffd45d":(buildable?"#9fe0ff":"#ff5d5d")); ctx.strokeRect(p.x-58,doorY,116,16);
   // 내부 아이콘/라벨
-  ctx.textAlign="center"; ctx.fillStyle=f.open?"#eaf6ff":"#a7a7a7"; ctx.font="bold 22px Malgun Gothic, sans-serif"; ctx.fillText(f.icon,f.x,modY+38);
-  ctx.font="bold 15px Malgun Gothic, sans-serif"; ctx.fillText(f.name,f.x,modY+66);
-  ctx.font="11px Segoe UI, sans-serif"; ctx.fillStyle=f.open?"#9fe0ff":"#ff8a8a"; ctx.fillText(f.open?f.en:"LOCKED",f.x,modY+88);
-  if(f.id==="launch"){
-    ctx.fillStyle="rgba(255,212,93,.18)"; ctx.beginPath(); ctx.ellipse(f.x,625,120,32,0,0,Math.PI*2); ctx.fill();
+  ctx.textAlign="center"; ctx.fillStyle=active?"#eaf6ff":(building?"#ffd45d":(buildable?"#d8f3ff":"#a7a7a7")); ctx.font="bold 22px Malgun Gothic, sans-serif"; ctx.fillText(f.icon,p.x,modY+38);
+  ctx.font="bold 15px Malgun Gothic, sans-serif"; ctx.fillText(f.name,p.x,modY+66);
+  ctx.font="11px Segoe UI, sans-serif"; ctx.fillStyle=active?"#9fe0ff":(building?"#ffd45d":(buildable?"#7fd0ff":"#ff8a8a"));
+  const label=active?"ACTIVE":(building?"BUILDING":(buildable?`BUILDABLE ${f.cost}C`:"LOCKED"));
+  ctx.fillText(label,p.x,modY+88);
+  if(f.interactionType==="missionSelect"){
+    ctx.fillStyle="rgba(255,212,93,.18)"; ctx.beginPath(); ctx.ellipse(p.x,625,120,32,0,0,Math.PI*2); ctx.fill();
     ctx.strokeStyle="#ffd45d"; ctx.stroke();
   }
 }
+
 async function startOrResume(){
   appMode="mission"; missionReturnMode=null; document.getElementById("hud").classList.remove("hidden");
   if(isMobileLike()) await requestLandscapeMode();
