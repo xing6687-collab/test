@@ -138,6 +138,9 @@
                   cursor:pointer;background:#e23b3b;color:#fff;transition:.15s;}
   #overlay button:hover{background:#ff5151;transform:scale(1.05);}
   #overlay .btnrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;}
+  #missionCloseBtn{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));right:calc(14px + env(safe-area-inset-right,0px));z-index:13;width:42px;height:42px;margin:0;padding:0;border-radius:50%;border:1px solid rgba(255,255,255,.22);background:rgba(20,24,32,.92);color:#fff;font-size:22px;line-height:42px;text-align:center;box-shadow:0 8px 28px rgba(0,0,0,.45);}
+  #missionCloseBtn:hover{background:#e23b3b;transform:none;}
+  body.touch #missionCloseBtn{width:40px;height:40px;line-height:40px;top:calc(10px + env(safe-area-inset-top,0px));right:calc(10px + env(safe-area-inset-right,0px));font-size:20px;}
   #reviveBtn{background:#2a9d5b !important;}
   #reviveBtn:hover{background:#34c473 !important;}
   #diffSel{margin-top:14px;flex:0 0 auto;}
@@ -160,6 +163,7 @@
     #overlay .tagline{font-size:.68rem;margin-bottom:6px;}
     #overlay .panel{max-height:32vh;font-size:.68rem;line-height:1.35;padding:9px 12px;}
     #overlay button{margin-top:9px;margin-bottom:4px;padding:9px 30px;font-size:1rem;}
+    #missionCloseBtn{margin:0;padding:0;width:36px;height:36px;line-height:36px;font-size:18px;}
   }
   .hidden{display:none !important;}
   #damage{position:fixed;inset:0;pointer-events:none;z-index:5;
@@ -232,6 +236,26 @@
     100%{transform:translateY(0) scale(1);box-shadow:0 0 0 0 transparent,0 12px 36px rgba(0,0,0,.52);}
   }
 
+
+  /* OUTGAME PHASE 1: 우주 물류선 로비 HUD */
+  #shipHud{position:fixed;inset:0;z-index:4;pointer-events:none;color:#eaf6ff;text-shadow:0 0 6px #000,1px 1px 2px #000;font-weight:800;}
+  #shipHud .shipTitle{position:absolute;top:14px;left:18px;font-size:18px;color:#ffd45d;letter-spacing:1px;}
+  #shipHud .shipSub{position:absolute;top:42px;left:18px;font-size:12px;color:#9fe0ff;line-height:1.45;max-width:520px;}
+  #shipHud .shipHint{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);padding:10px 16px;border:1px solid rgba(159,224,255,.38);border-radius:12px;background:rgba(10,14,22,.72);font-size:14px;text-align:center;}
+  #shipHud .shipHint b{color:#ffd45d;}
+  #shipPanel{position:fixed;right:18px;top:96px;z-index:5;width:min(360px,34vw);padding:14px 16px;border:2px solid rgba(255,212,93,.75);border-radius:14px;background:rgba(16,20,28,.92);color:#fff;text-shadow:0 0 5px #000;box-shadow:0 18px 48px rgba(0,0,0,.55);pointer-events:none;}
+  #shipPanel h3{margin:0 0 6px;color:#ffd45d;font-size:1.05rem;}
+  #shipPanel .state{font-size:.78rem;color:#9fe0ff;margin-bottom:8px;}
+  #shipPanel .desc{font-size:.84rem;line-height:1.45;color:#d9e6f2;}
+  #shipPanel .action{margin-top:10px;color:#7CFFB2;font-size:.82rem;font-weight:900;}
+  @media (max-width:900px), (max-height:560px){
+    #shipHud .shipTitle{font-size:14px;top:8px;left:10px;}
+    #shipHud .shipSub{font-size:10px;top:30px;left:10px;max-width:46vw;}
+    #shipHud .shipHint{bottom:8px;font-size:11px;padding:7px 10px;}
+    #shipPanel{right:8px;top:64px;width:min(300px,48vw);padding:10px 12px;}
+    #shipPanel h3{font-size:.9rem;} #shipPanel .desc{font-size:.72rem;}
+  }
+
 </style>
 
 <style id="pc-rec-minimap-hard-anchor-fix">
@@ -285,6 +309,19 @@ body:not(.touch) #liveRecCard.collapsed{
     <div id="log"></div>
   </div>
 
+
+  <div id="shipHud" class="hidden">
+    <div class="shipTitle">🚚 ORBITAL LOGISTICS CARRIER · DELIVERY TO DIE</div>
+    <div class="shipSub">퇴역 직전의 전쟁 배송선을 인수했습니다. 메인 스트리트를 따라 시설 모듈을 확인하고, 가까운 출격 베이에서 작전에 투입하세요.</div>
+    <div class="shipHint" id="shipHint">WASD 이동 · 시설 문 앞에서 <b>E</b> 상호작용 · 출격 베이에서 <b>E</b> 미션 선택</div>
+  </div>
+  <div id="shipPanel" class="hidden">
+    <h3 id="shipPanelTitle">시설</h3>
+    <div class="state" id="shipPanelState">상태</div>
+    <div class="desc" id="shipPanelDesc">설명</div>
+    <div class="action" id="shipPanelAction">E: 상호작용</div>
+  </div>
+
   <div id="damage"></div>
   <div id="toast"></div>
   <div id="debugOverlay"></div>
@@ -330,9 +367,10 @@ body:not(.touch) #liveRecCard.collapsed{
   </div>
 
   <div id="overlay">
+    <button id="missionCloseBtn" class="hidden" aria-label="작전 선택 닫기">×</button>
     <h1>DELIVERY TO DIE</h1>
     <div class="tagline">— 화력을 소비하며 전선을 유지하는 협동 PvE 익스트랙션 (TPS 프로토타입) —</div>
-    <div class="panel">
+    <div class="panel" style="display:none">
       <div><b>임무:</b> 넓은 전장에 흩어진 <b>목표(최소 10개)</b> 중 원하는 만큼 수행하고, 🚁 <b>탈출 지점</b>에서 로켓을 호출해 빠져나가라.</div>
       <div style="margin-top:8px"><b>탈출:</b> 탈출 지점에서 <span class="key">E</span>로 로켓 호출 → 강하한 로켓 탑승 구역에서 <b>30초</b> 버티면 탈출 성공.</div>
       <div style="margin-top:8px"><b>3개 슬롯:</b> <span class="key">1</span> 기본 무기(돌격소총/샷건/저격총) · <span class="key">2</span> 화력(구매) · <span class="key">3</span> 투척/설치(수류탄·센트리).</div>
@@ -342,14 +380,14 @@ body:not(.touch) #liveRecCard.collapsed{
       <div style="margin-top:8px"><b>장갑 대응:</b> 중장갑 개체엔 저격총/유탄/레이저건이 필요하다. (프로토타입 — 자금 넉넉히 지급)</div>
       <div style="margin-top:8px"><b>부활:</b> 쓰러져도 자금이 충분하면 <b>비용을 내고 부활</b>(근처 안전지대 재투입). 부활할수록 비용이 오른다.</div>
     </div>
-    <div id="diffSel">
+    <div id="diffSel" style="display:none">
       <div class="dtitle">난이도 선택 — <b id="diffName">순찰</b> <span id="diffNum">Lv.2</span></div>
       <div id="diffBtns"></div>
       <div class="ddesc" id="diffDesc">표준 전장 (권장)</div>
     </div>
-    <label id="assistToggle"><input type="checkbox" id="assistToggleInput" checked> <b>AI 전술 추천</b> ON</label>
+    <label id="assistToggle" style="display:none"><input type="checkbox" id="assistToggleInput" checked> <b>AI 전술 추천</b> ON</label>
     <div class="btnrow">
-      <button id="startBtn">출격</button>
+      <button id="startBtn">우주선 입장</button>
       <button id="reviveBtn" style="display:none">✨ 부활</button>
     </div>
   </div>
@@ -1291,11 +1329,31 @@ let aiRecommendEnabled=true;
 let startRecOpen=false, liveRec=null, liveRecTimer=0;   // 추천 배송 팝업/라이브 카드
 let deathPending=false, deathT=0, deathX=0, deathY=0, deathCause="";   // 사망 연출 → 지연 UI
 
+//---------------- OUTGAME PHASE 1: 우주 물류선 로비 상태 ----------------
+let appMode="menu";   // menu | ship | missionSelect | mission
+let missionReturnMode=null;   // null | win | fail | down : 전투 종료/포기 후 우주선 복귀 상태
+let shipRunning=false, shipLastTime=0, shipNoticeT=0;
+let shipPlayer={x:1200,y:560,r:15,aim:-Math.PI/2,speed:230};
+let shipCam={x:0,y:0};
+let shipFocus=null;
+const SHIP={w:2400,h:900,corridor:{x:120,y:300,w:2160,h:300}};
+const SHIP_FACILITIES=[
+  {id:"launch",name:"출격 베이",en:"Launch Bay",x:1200,y:660,side:"bottom",open:true,icon:"🚀",state:"사용 가능",desc:"가장 가까운 핵심 동선입니다. 이곳에서 미션 선택 단말을 열고 착륙정 출격을 준비합니다.",action:"E: 작전 출격"},
+  {id:"bridge",name:"브리지",en:"Bridge",x:1200,y:240,side:"top",open:false,icon:"🛰️",state:"기능 준비중",desc:"행성 궤도, 작전 계약, 함선 항로를 관리하는 지휘 구역입니다. 미션 선택 기능은 출격 베이에서 우선 제공되며, 브리지는 이후 확장 단계에서 개방됩니다."},
+  {id:"logistics",name:"물류센터",en:"Logistics Hub",x:820,y:240,side:"top",open:false,icon:"📦",state:"모듈 잠김",desc:"화력 배송과 보급 캡슐을 통제하는 핵심 시설입니다. 아직 기능이 구현되지 않았으므로 LOCKED 처리되어 있으며, 이후 배송시간, 동시배송, 보험배송 성장이 연결됩니다."},
+  {id:"armory",name:"무기고",en:"Armory",x:520,y:660,side:"bottom",open:false,icon:"🔫",state:"모듈 미도킹",desc:"개인 장비와 기본 무기를 관리할 시설입니다. 아직 외벽 모듈이 도킹되지 않아 출입문이 잠겨 있습니다."},
+  {id:"research",name:"연구소",en:"R&D Lab",x:520,y:240,side:"top",open:false,icon:"🧪",state:"모듈 미도킹",desc:"신무기, 탄종, 실험 병기 설계도를 연구할 시설입니다. 건설 시 우주에서 연구 모듈이 도킹되고 문이 열립니다."},
+  {id:"trade",name:"자유무역구",en:"Free Trade Zone",x:1580,y:660,side:"bottom",open:false,icon:"⚖️",state:"상인 입점 대기",desc:"여러 기업과 상인이 입점하는 우주 교역 구역입니다. 무기회사, 드론업체, 보험상, 암시장으로 확장됩니다."},
+  {id:"factory",name:"군수공장",en:"Manufacturing Bay",x:1880,y:240,side:"top",open:false,icon:"🏭",state:"모듈 미도킹",desc:"포탑, 폭탄, 드론, 특수 화물을 생산하는 병기 제작 라인입니다."},
+  {id:"drone",name:"드론 격납고",en:"Drone Hangar",x:2060,y:660,side:"bottom",open:false,icon:"🤖",state:"모듈 미도킹",desc:"전투 드론을 정비하고 개조하는 격납고입니다. 이후 드론 해금과 재보급 성장이 연결됩니다."},
+  {id:"ai",name:"AI 관제센터",en:"AI Control",x:2140,y:240,side:"top",open:false,icon:"🧠",state:"코어 미장착",desc:"전장 분석과 AI 배송추천을 강화하는 관제 모듈입니다."}
+];
+
 const keys={}; let mouse={x:0,y:0}; let cam={x:0,y:0};
 
 //---------------- DOM ----------------
 const canvas=document.getElementById("game"),ctx=canvas.getContext("2d");
-const overlay=document.getElementById("overlay"),startBtn=document.getElementById("startBtn"),reviveBtn=document.getElementById("reviveBtn");
+const overlay=document.getElementById("overlay"),startBtn=document.getElementById("startBtn"),reviveBtn=document.getElementById("reviveBtn"),missionCloseBtn=document.getElementById("missionCloseBtn");
 const diffBtnsEl=document.getElementById("diffBtns"),diffNameEl=document.getElementById("diffName"),diffNumEl=document.getElementById("diffNum"),diffDescEl=document.getElementById("diffDesc");
 const buyMenu=document.getElementById("buyMenu"),buyList=document.getElementById("buyList"),buyCredits=document.getElementById("buyCredits");
 const buyTitle=document.getElementById("buyTitle"),buySub=document.getElementById("buySub");
@@ -1308,6 +1366,8 @@ const objLabel=document.getElementById("objbar-label"),objFill=document.getEleme
 const wName=document.getElementById("wName"),wAmmo=document.getElementById("wAmmo"),wArmor=document.getElementById("wArmor"),wSlots=document.getElementById("wSlots");
 const beaconVal=document.getElementById("beaconVal"),cdVal=document.getElementById("cdVal");
 const logEl=document.getElementById("log");
+const shipHud=document.getElementById("shipHud"),shipPanel=document.getElementById("shipPanel"),shipHint=document.getElementById("shipHint");
+const shipPanelTitle=document.getElementById("shipPanelTitle"),shipPanelState=document.getElementById("shipPanelState"),shipPanelDesc=document.getElementById("shipPanelDesc"),shipPanelAction=document.getElementById("shipPanelAction");
 
 let W=0,H=0;
 function resize(){W=canvas.width=innerWidth;H=canvas.height=innerHeight;}
@@ -1323,6 +1383,13 @@ addEventListener("keydown",e=>{
   keys[e.code]=true;
   if(e.code==="KeyM"){ setTouch(!isTouch); pushLog(isTouch?"📱 모바일 HUD 미리보기 ON (마우스로 조작)":"🖥️ 모바일 HUD OFF","#9fe0ff"); return; }   // PC 테스트용 토글
   if(e.code==="F9"){ debugToggle(); e.preventDefault(); return; }
+  if(appMode==="ship"){
+    if(e.code==="Escape"){ e.preventDefault(); return; }   // Phase 1: 처음부터 우주선이 메인 화면이므로 별도 메뉴로 빠지지 않는다.
+    if(e.code==="KeyE"){ shipInteract(); e.preventDefault(); return; }
+  }
+  if(appMode==="missionSelect"){
+    if(e.code==="Escape"){ closeMissionSelect(); e.preventDefault(); return; }
+  }
   if(e.code==="KeyG" && running && !buyOpen && !startRecOpen && !deathPending){ buyLiveRecommendation(); e.preventDefault(); return; }
   if(e.code==="KeyB" && running && !startRecOpen && !deathPending){ toggleBuy(); e.preventDefault(); return; }
   if(e.code==="Escape"){ if(startRecOpen) closeStartRecommendations(); else if(buyOpen) toggleBuy(); else pause(); return; }
@@ -1361,7 +1428,8 @@ addEventListener("mouseup",e=>{ if(isTouch||e.button!==0) return; primaryUp(); }
 canvas.addEventListener("mouseleave",()=>{ if(!isTouch) firing=false; });
 addEventListener("blur",()=>{ firing=false; });
 canvas.addEventListener("wheel",e=>{ if(running && !buyOpen){ swapSlot(); e.preventDefault(); } },{passive:false});
-startBtn.addEventListener("click",startOrResume);
+startBtn.addEventListener("click",handleStartButton);
+if(missionCloseBtn) missionCloseBtn.addEventListener("click",e=>{ e.preventDefault(); if(appMode==="missionSelect") closeMissionSelect(); });
 reviveBtn.addEventListener("pointerup",e=>{ e.preventDefault(); doRevive(); });
 // ----- 난이도 선택 UI -----
 function renderDiffSel(){
@@ -1383,7 +1451,12 @@ function setTouch(v){ isTouch=v; try{ document.body.classList.toggle("touch",v);
 try{ if(window.matchMedia && matchMedia("(pointer:coarse)").matches) setTouch(true); }catch(e){}   // 터치 기기는 처음부터 모바일 HUD 표시
 function tpos(e){ const r=canvas.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top}; }
 canvas.addEventListener("pointerdown",e=>{ if(e.pointerType==="mouse" && !isTouch) return; setTouch(true);
-  if(!running) return; const p=tpos(e);
+  if(!running && appMode!=="ship") return; const p=tpos(e);
+  if(appMode==="ship"){
+    if(p.x<W*0.5 && !lj.active){ lj.active=true; lj.id=e.pointerId; lj.ox=p.x; lj.oy=p.y; lj.x=p.x; lj.y=p.y; lj.mag=0; }
+    else if(p.x>=W*0.5 && !rj.active){ rj.active=true; rj.id=e.pointerId; rj.ox=p.x; rj.oy=p.y; rj.ang=shipPlayer.aim; rj.mag=0; }
+    e.preventDefault(); return;
+  }
   if(buyOpen){ if(p.x<W*0.5 && !lj.active){ lj.active=true; lj.id=e.pointerId; lj.ox=p.x; lj.oy=p.y; lj.x=p.x; lj.y=p.y; lj.mag=0; e.preventDefault(); } return; }   // 구매 중엔 왼쪽 이동 스틱만(멀티터치로 이동하며 구매)
   for(const b of mobBtns()){ if(btnHit(b,p.x,p.y)){ if(b.id==="map"){ mapHold=true; mapHoldId=e.pointerId; } else b.on(); e.preventDefault(); return; } }   // 액션 버튼(🗺️는 홀드)
   if(p.x<W*0.5 && !lj.active){ lj.active=true; lj.id=e.pointerId; lj.ox=p.x; lj.oy=p.y; lj.x=p.x; lj.y=p.y; lj.mag=0; }
@@ -1425,7 +1498,177 @@ function endPtr(id){ if(id===lj.id){ lj.active=false; lj.id=-1; touchMove.active
 canvas.addEventListener("pointerup",e=>{ if(e.pointerType==="mouse" && !isTouch) return; endPtr(e.pointerId); e.preventDefault(); },{passive:false});
 canvas.addEventListener("pointercancel",e=>{ endPtr(e.pointerId); });
 
+function handleStartButton(){
+  if(appMode==="menu"){ enterShip("initial"); return; }
+  if(appMode==="missionSelect"){ launchSelectedMission(); return; }
+  if(appMode==="ship"){ return; }
+  if(appMode==="mission" && missionReturnMode){ returnToShip(missionReturnMode); return; }
+  startOrResume();
+}
+
+function showInitialMenu(){
+  appMode="menu"; missionReturnMode=null; shipRunning=false; running=false; buyOpen=false; startRecOpen=false; deathPending=false; firing=false;
+  overlay.querySelector("h1").textContent="DELIVERY TO DIE";
+  overlay.querySelector(".tagline").textContent="— 화력을 소비하며 전선을 유지하는 협동 PvE 익스트랙션 (TPS 프로토타입) —";
+  const panel=overlay.querySelector(".panel"); if(panel) panel.style.display="none";
+  const diffSel=document.getElementById("diffSel"); if(diffSel) diffSel.style.display="none";
+  if(assistToggle) assistToggle.style.display="none";
+  if(missionCloseBtn) missionCloseBtn.classList.add("hidden");
+  reviveBtn.style.display="none"; startBtn.textContent="우주선 입장";
+  document.getElementById("hud").classList.add("hidden"); shipHud.classList.add("hidden"); shipPanel.classList.add("hidden");
+  buyMenu.classList.add("hidden"); startRecommend.classList.add("hidden"); liveRecCard.classList.add("hidden"); damageEl.style.opacity="0";
+  overlay.classList.remove("hidden");
+}
+
+function enterShip(reason="initial"){
+  initAudio();
+  overlay.classList.add("hidden"); buyMenu.classList.add("hidden"); startRecommend.classList.add("hidden");
+  document.getElementById("hud").classList.add("hidden");
+  liveRecCard.classList.add("hidden"); damageEl.style.opacity="0";
+  shipHud.classList.remove("hidden"); shipPanel.classList.add("hidden");
+  appMode="ship"; missionReturnMode=null; shipRunning=true; running=false; buyOpen=false; startRecOpen=false; deathPending=false; firing=false;
+  // Phase 1 확장성: 우주선 복귀 시에는 출격 베이 근처에 내려 동선을 짧게 유지한다.
+  if(reason==="return_win" || reason==="return_fail" || reason==="return_down"){ shipPlayer.x=1200; shipPlayer.y=625; shipPlayer.aim=-Math.PI/2; }
+  else { shipPlayer.x=1200; shipPlayer.y=560; shipPlayer.aim=-Math.PI/2; }
+  shipNoticeT=2.8;
+  shipLastTime=performance.now(); requestAnimationFrame(shipLoop);
+}
+function openMissionSelect(){
+  missionReturnMode=null; appMode="missionSelect"; shipRunning=false; shipPanel.classList.add("hidden");
+  renderDiffSel();
+  showOverlay("🛰️ 작전 선택", "출격 베이 관제 단말에서 이번 작전 난이도와 적 조합을 선택하세요.", "작전 시작", false, true);
+  shipHud.classList.remove("hidden");
+}
+function closeMissionSelect(){
+  overlay.classList.add("hidden"); if(missionCloseBtn) missionCloseBtn.classList.add("hidden"); appMode="ship"; shipRunning=true; shipLastTime=performance.now(); requestAnimationFrame(shipLoop);
+}
+function launchSelectedMission(){
+  missionReturnMode=null; shipRunning=false; appMode="mission"; shipHud.classList.add("hidden"); shipPanel.classList.add("hidden");
+  document.getElementById("hud").classList.remove("hidden");
+  started=false; startOrResume();
+}
+function launchFromShip(){ openMissionSelect(); }
+function returnToShip(result="fail"){
+  const label = result==="win" ? "탈출 성공" : (result==="down" ? "부활 포기" : "작전 실패");
+  // 전투 루프/전투 UI 정리. 다음 출격은 launchFromShip → startOrResume → resetGame 경로로 새 작전을 생성한다.
+  running=false; started=false; buyOpen=false; startRecOpen=false; deathPending=false; firing=false; heldBeacon=-1;
+  reviveBtn.style.display="none"; overlay.classList.add("hidden"); buyMenu.classList.add("hidden"); startRecommend.classList.add("hidden"); liveRecCard.classList.add("hidden"); damageEl.style.opacity="0";
+  logLines=[];
+  enterShip(result==="win"?"return_win":(result==="down"?"return_down":"return_fail"));
+  shipNoticeT=3.0;
+  if(typeof toast==="function") toast(`🚚 ${label} 보고 완료 · 우주 물류선으로 복귀`);
+}
+function nearestShipFacility(){
+  let best=null,bd=1e9;
+  for(const f of SHIP_FACILITIES){
+    const dy=f.side==="top"?300:600;
+    const d=Math.hypot(shipPlayer.x-f.x, shipPlayer.y-dy);
+    if(d<bd){ bd=d; best=f; }
+  }
+  return bd<120?best:null;
+}
+function shipInteract(){
+  const f=nearestShipFacility();
+  if(!f){ shipNoticeT=1.2; return; }
+  if(f.id==="launch"){ launchFromShip(); return; }
+  showShipPanel(f,true);
+}
+function showShipPanel(f,force){
+  if(!f){ shipPanel.classList.add("hidden"); return; }
+  shipPanelTitle.textContent=`${f.icon} ${f.name} (${f.en})`;
+  shipPanelState.textContent=f.open?`상태: ${f.state}`:`상태: ${f.state} · LOCKED`;
+  shipPanelDesc.textContent=f.desc;
+  shipPanelAction.textContent=f.id==="launch"?"E: 미션 선택":(f.open?"E: 시설 이용":"LOCKED · 기능 미구현");
+  shipPanel.classList.remove("hidden");
+}
+function updateShip(dt){
+  // 인게임과 동일한 기본 조작: WASD/좌스틱 이동, Shift/스틱 끝 질주, 마우스/우스틱 조준.
+  let mx=(keys.KeyD?1:0)-(keys.KeyA?1:0), my=(keys.KeyS?1:0)-(keys.KeyW?1:0);
+  if(touchMove.active){ mx=touchMove.x; my=touchMove.y; }
+  const moving=(mx!==0||my!==0);
+  const sprint=((keys.ShiftLeft||keys.ShiftRight) || (touchMove.active&&touchMove.mag>0.82)) && moving;
+  const sp=shipPlayer.speed*(sprint?1.5:1);
+  const len=Math.hypot(mx,my);
+  if(len>0){ shipPlayer.x+=mx/len*sp*dt; shipPlayer.y+=my/len*sp*dt; }
+  if(isTouch){
+    if(rj.active && rj.mag>0.18) shipPlayer.aim=rj.ang;
+    else if(moving) shipPlayer.aim=Math.atan2(my,mx);
+  }else{
+    const wx=mouse.x+shipCam.x, wy=mouse.y+shipCam.y;
+    shipPlayer.aim=Math.atan2(wy-shipPlayer.y, wx-shipPlayer.x);
+  }
+  const c=SHIP.corridor;
+  shipPlayer.x=Math.max(c.x+22,Math.min(c.x+c.w-22,shipPlayer.x));
+  shipPlayer.y=Math.max(c.y+24,Math.min(c.y+c.h-24,shipPlayer.y));
+  shipCam.x=Math.max(0,Math.min(SHIP.w-W,shipPlayer.x-W/2));
+  shipCam.y=Math.max(0,Math.min(SHIP.h-H,shipPlayer.y-H/2));
+  shipFocus=nearestShipFacility(); showShipPanel(shipFocus,false);
+  if(shipNoticeT>0) shipNoticeT-=dt;
+}
+function shipLoop(now){
+  if(!shipRunning || appMode!=="ship") return;
+  const dt=Math.min(0.05,(now-shipLastTime)/1000); shipLastTime=now;
+  updateShip(dt); renderShip(dt); requestAnimationFrame(shipLoop);
+}
+function shipScreenX(x){ return x-shipCam.x; }
+function shipScreenY(y){ return y-shipCam.y; }
+function drawShipRect(x,y,w,h,fill,stroke){
+  ctx.fillStyle=fill; ctx.fillRect(x,y,w,h); if(stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=2; ctx.strokeRect(x,y,w,h); }
+}
+function renderShip(){
+  ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,W,H);
+  const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,"#050913"); g.addColorStop(0.45,"#111823"); g.addColorStop(1,"#05070c"); ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  ctx.save(); ctx.translate(-shipCam.x,-shipCam.y);
+  // 우주 배경 창 밖
+  ctx.fillStyle="#030814"; ctx.fillRect(0,0,SHIP.w,SHIP.h);
+  for(let i=0;i<95;i++){ const x=(i*137)%SHIP.w, y=(i*59)%SHIP.h; ctx.fillStyle=i%7===0?"#9fe0ff":"#ffffff"; ctx.globalAlpha=i%7===0?.55:.25; ctx.fillRect(x,y,1.4,1.4); }
+  ctx.globalAlpha=1;
+  // 외벽/중앙 메인 스트리트
+  drawShipRect(80,250,2240,410,"#111923","#314254");
+  drawShipRect(120,300,2160,300,"#1b2430","#52687a");
+  for(let x=170;x<2260;x+=95){ ctx.fillStyle="rgba(127,208,255,.18)"; ctx.fillRect(x,430,52,5); ctx.fillRect(x,468,52,3); }
+  for(let x=140;x<2260;x+=180){ ctx.fillStyle="rgba(255,212,93,.22)"; ctx.fillRect(x,585,82,4); ctx.fillRect(x,306,82,4); }
+  ctx.fillStyle="rgba(20,28,38,.9)"; ctx.fillRect(120,392,2160,92);
+  ctx.strokeStyle="rgba(159,224,255,.14)"; ctx.lineWidth=1;
+  for(let x=160;x<2260;x+=80){ ctx.beginPath(); ctx.moveTo(x,302); ctx.lineTo(x+28,600); ctx.stroke(); }
+  // 브리지 전망창
+  const bx=1200, by=245; ctx.fillStyle="rgba(6,18,32,.95)"; ctx.fillRect(bx-150,70,300,150); ctx.strokeStyle="#557a95"; ctx.lineWidth=3; ctx.strokeRect(bx-150,70,300,150);
+  ctx.fillStyle="rgba(92,172,255,.18)"; ctx.beginPath(); ctx.arc(bx,145,62,0,Math.PI*2); ctx.fill(); ctx.fillStyle="rgba(255,255,255,.75)"; ctx.fillRect(bx-4,110,8,70);
+  // 움직이는 화물 드론/컨테이너
+  const t=performance.now()/1000;
+  for(let i=0;i<5;i++){ const x=((t*70+i*430)%SHIP.w), y=92+i*18; ctx.fillStyle="rgba(255,212,93,.45)"; ctx.fillRect(x,y,34,14); ctx.fillStyle="rgba(127,208,255,.7)"; ctx.fillRect(x-8,y+4,6,6); }
+  // 시설 문/모듈
+  for(const f of SHIP_FACILITIES){ drawShipFacility(f); }
+  // 플레이어
+  ctx.save(); ctx.translate(shipPlayer.x,shipPlayer.y); ctx.rotate(shipPlayer.aim); ctx.fillStyle="#d8e8f8"; ctx.beginPath(); ctx.arc(0,0,shipPlayer.r,0,Math.PI*2); ctx.fill(); ctx.fillStyle="#7fd0ff"; ctx.fillRect(6,-4,18,8); ctx.strokeStyle="#0b1118"; ctx.lineWidth=3; ctx.stroke(); ctx.restore();
+  // 안내 마커
+  if(shipFocus){ const fy=shipFocus.side==="top"?300:600; ctx.fillStyle="#ffd45d"; ctx.font="bold 18px Malgun Gothic, sans-serif"; ctx.textAlign="center"; ctx.fillText("E",shipFocus.x,fy+(shipFocus.side==="top"?34:-24)); }
+  ctx.restore();
+  // 화면 고정 오버레이 안내
+  if(shipNoticeT>0){ ctx.fillStyle=`rgba(255,212,93,${Math.min(.9,shipNoticeT)})`; ctx.font="bold 22px Malgun Gothic, sans-serif"; ctx.textAlign="center"; ctx.fillText("우주 물류선 메인 스트리트",W/2,90); }
+}
+function drawShipFacility(f){
+  const top=f.side==="top", doorY=top?286:600, modY=top?132:626, h=126, w=f.id==="trade"?250:190;
+  const x=f.x-w/2;
+  // 외부 도킹 모듈/잠긴 빈 슬롯
+  ctx.fillStyle=f.open?"#172431":"#14171c"; ctx.strokeStyle=f.open?"#557a95":"#4b3131"; ctx.lineWidth=2;
+  ctx.fillRect(x,modY,w,h); ctx.strokeRect(x,modY,w,h);
+  if(!f.open){ ctx.fillStyle="rgba(255,70,70,.12)"; ctx.fillRect(x+8,modY+8,w-16,h-16); }
+  // 연결 통로와 문
+  ctx.fillStyle=f.open?"rgba(127,208,255,.18)":"rgba(255,80,80,.12)"; ctx.fillRect(f.x-38,top?258:600,76,top?42:42);
+  ctx.fillStyle=f.open?"#263848":"#2a1c1e"; ctx.fillRect(f.x-58,doorY,116,16);
+  ctx.strokeStyle=f.open?"#7fd0ff":"#ff5d5d"; ctx.strokeRect(f.x-58,doorY,116,16);
+  // 내부 아이콘/라벨
+  ctx.textAlign="center"; ctx.fillStyle=f.open?"#eaf6ff":"#a7a7a7"; ctx.font="bold 22px Malgun Gothic, sans-serif"; ctx.fillText(f.icon,f.x,modY+38);
+  ctx.font="bold 15px Malgun Gothic, sans-serif"; ctx.fillText(f.name,f.x,modY+66);
+  ctx.font="11px Segoe UI, sans-serif"; ctx.fillStyle=f.open?"#9fe0ff":"#ff8a8a"; ctx.fillText(f.open?f.en:"LOCKED",f.x,modY+88);
+  if(f.id==="launch"){
+    ctx.fillStyle="rgba(255,212,93,.18)"; ctx.beginPath(); ctx.ellipse(f.x,625,120,32,0,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle="#ffd45d"; ctx.stroke();
+  }
+}
 async function startOrResume(){
+  appMode="mission"; missionReturnMode=null; document.getElementById("hud").classList.remove("hidden");
   if(isMobileLike()) await requestLandscapeMode();
   if(rocket.state==="win"||player.hp<=0||!started) resetGame();
   initAudio();   // 사용자 제스처(클릭)에서 오디오 활성화
@@ -1466,7 +1709,9 @@ function resetGame(){
 function showOverlay(t,m,b,hidePanel,showDiff){
   overlay.querySelector("h1").textContent=t; overlay.querySelector(".tagline").textContent=m;
   overlay.querySelector(".panel").style.display=hidePanel?"none":"block";
-  document.getElementById("diffSel").style.display=showDiff?"":"none";   // 난이도 선택은 재출격 화면에서만
+  document.getElementById("diffSel").style.display=showDiff?"":"none";   // 난이도 선택은 작전 선택 화면에서만
+  if(assistToggle) assistToggle.style.display=showDiff?"":"none";
+  if(missionCloseBtn) missionCloseBtn.classList.toggle("hidden", !showDiff);
   reviveBtn.style.display="none";   // 기본 숨김(부활 화면에서만 onPlayerDown이 표시)
   startBtn.textContent=b; overlay.classList.remove("hidden");
 }
@@ -3434,10 +3679,10 @@ function updateExtraction(dt){
   }
 }
 function gameScore(n){ return Math.round((kills*10 + n*200) * DIFF.scoreMul); }   // 처치+목표 기반 점수 × 난이도 배율
-function winGame(){ running=false; rocket.state="win"; sfx("win"); const n=objectives.filter(o=>o.done).length;
-  showOverlay("🏆 탈출 성공",`Lv.${difficulty} 「${DIFF_NAMES[difficulty-1]}」 · 점수 ${gameScore(n)} · 목표 ${n}/${objectives.length} · 처치 ${kills} · 잔액 ${Math.floor(player.credits)}C`,"다시 출격",true,true); }
-function overGame(){ running=false; sfx("lose"); const n=objectives.filter(o=>o.done).length;
-  showOverlay("💀 작전 실패",`Lv.${difficulty} 「${DIFF_NAMES[difficulty-1]}」 · 점수 ${gameScore(n)} · 목표 ${n}/${objectives.length} · 처치 ${kills}.`,"재출격",true,true); }
+function winGame(){ running=false; missionReturnMode="win"; rocket.state="win"; sfx("win"); const n=objectives.filter(o=>o.done).length;
+  showOverlay("🏆 탈출 성공",`Lv.${difficulty} 「${DIFF_NAMES[difficulty-1]}」 · 점수 ${gameScore(n)} · 목표 ${n}/${objectives.length} · 처치 ${kills} · 잔액 ${Math.floor(player.credits)}C`,"우주선 복귀",true,false); }
+function overGame(){ running=false; missionReturnMode="fail"; sfx("lose"); const n=objectives.filter(o=>o.done).length;
+  showOverlay("💀 작전 실패",`Lv.${difficulty} 「${DIFF_NAMES[difficulty-1]}」 · 점수 ${gameScore(n)} · 목표 ${n}/${objectives.length} · 처치 ${kills}.`,"우주선 복귀",true,false); }
 function triggerPlayerDeath(){
   if(deathPending) return;
   deathPending=true; deathT=1.65; deathX=player.x; deathY=player.y; player.dead=true; player.hp=0; firing=false; player.healing=false; player.invuln=99; player.deathAng=player.aim;
@@ -3471,13 +3716,15 @@ function onPlayerDown(){   // 체력 0 → 사망 연출 후 부활 가능하면
   if(DIFF.noRevive){ overGame(); return; }   // 하드코어(종말): 부활 불가
   const cost=reviveCost();
   if(player.credits>=cost){
-    showOverlay("💀 쓰러졌다!",`부활 비용 ${cost}C · 보유 ${Math.floor(player.credits)}C · 근처 안전지대에 재투입됩니다.`,"포기하고 재출격",true,false);
+    missionReturnMode="down";
+    showOverlay("💀 쓰러졌다!",`부활 비용 ${cost}C · 보유 ${Math.floor(player.credits)}C · 근처 안전지대에 재투입됩니다.`,"포기하고 우주선 복귀",true,false);
     reviveBtn.style.display=""; reviveBtn.textContent=`✨ 부활 (-${cost}C)`;
   } else {
     overGame();   // 자금 부족 → 최종 실패
   }
 }
 function doRevive(){
+  missionReturnMode=null;
   const cost=reviveCost();
   if(player.credits<cost) return;
   player.credits-=cost; reviveCount++;
@@ -5589,12 +5836,15 @@ fireEnemyShot=function(e,dx,dy){
 // 최신 탱크 포탄은 적중 시 한방 즉사하지 않도록 폭발 피해를 조정한다.
 const _updateMissileTankDamagePatch=updateEnemies;
 // 화염 중장갑 변종은 현재 적 리스트/설명에 없는 변종이라, 기존 armored 변종을 탱크/미사일/미니건 계열로 정규화한다.
-const _pickArmoredVariantBeforeNoFlameTank=pickArmoredVariant;
-pickArmoredVariant=function(){
-  const v=_pickArmoredVariantBeforeNoFlameTank();
-  if(v && v.kind==='flame') return {kind:'minigun', label:'중장갑 미니건'};
-  return v;
-};
+// 일부 빌드에는 pickArmoredVariant가 없을 수 있으므로 안전하게 가드한다.
+if(typeof pickArmoredVariant === "function"){
+  const _pickArmoredVariantBeforeNoFlameTank=pickArmoredVariant;
+  pickArmoredVariant=function(){
+    const v=_pickArmoredVariantBeforeNoFlameTank();
+    if(v && v.kind==='flame') return {kind:'minigun', label:'중장갑 미니건'};
+    return v;
+  };
+}
 
 // ==========================================================
 // FINAL PATCH: 기계화 크기/드론 역할/탱크 스폰·공격 텀/AI추천 UI
@@ -6211,6 +6461,9 @@ pickArmoredVariant=function(){
   }
   window.addEventListener('resize', forcePcRecUnderMinimap);
 })();
+
+// Phase 1 boot: 최초 실행은 단순 타이틀 화면에서 시작한다.
+setTimeout(()=>showInitialMenu(),0);
 
 </script>
 </body>
