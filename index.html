@@ -262,6 +262,38 @@
   #facilityModal .primary{background:#ffd45d;color:#151515;}
   #facilityModal .secondary{background:#2a2f3a;color:#d7e5f3;border:1px solid #4a5568;}
   #facilityModal .disabled{opacity:.45;cursor:default;}
+  /* PHASE 2-2: 메인 메뉴 세이브 슬롯 UI */
+  #mainMenu{width:min(760px,94vw);display:flex;flex-direction:column;align-items:stretch;gap:10px;margin-top:10px;}
+  #mainMenu .menuGrid{display:grid;grid-template-columns:minmax(190px,260px) 1fr;gap:12px;align-items:stretch;}
+  #mainMenu .menuButtons{display:flex;flex-direction:column;gap:8px;}
+  #mainMenu button{margin:0;padding:12px 16px;border:0;border-radius:10px;font-size:1rem;font-weight:900;cursor:pointer;text-align:left;text-shadow:none;box-shadow:0 8px 22px rgba(0,0,0,.32);transition:.12s;}
+  #mainMenu button:hover{transform:translateY(-1px) scale(1.015);}
+  #mainMenu button:disabled{opacity:.42;cursor:default;transform:none;filter:grayscale(.35);}
+  #mainMenu .play{background:#7ed957;color:#11200d;}
+  #mainMenu .continue{background:#38bdf8;color:#071923;}
+  #mainMenu .save{background:#2aa6d6;color:#fff;}
+  #mainMenu .warn{background:#ff5d5d;color:#fff;}
+  #mainMenu .subbtn{background:#2a2f3a;color:#d7e5f3;border:1px solid #4a5568;}
+  #mainMenu .slotCard{padding:14px 16px;border:1px solid rgba(159,224,255,.35);border-radius:14px;background:rgba(10,15,25,.72);text-align:left;box-shadow:0 10px 28px rgba(0,0,0,.4);}
+  #mainMenu .slotTitle{color:#9fe0ff;font-size:.9rem;font-weight:900;margin-bottom:5px;}
+  #mainMenu .slotName{color:#fff;font-size:1.1rem;font-weight:900;margin-bottom:8px;}
+  #mainMenu .slotMeta{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;font-size:.78rem;color:#d9e6f2;}
+  #mainMenu .slotMeta div{padding:7px 8px;border-radius:8px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.08);}
+  #mainMenu .saveNote{font-size:.76rem;line-height:1.45;color:#aebdd0;margin-top:8px;}
+  #mainMenu .bottomRow{display:flex;gap:8px;flex-wrap:wrap;}
+  #mainMenu .bottomRow button{flex:1;min-width:120px;font-size:.86rem;padding:10px 12px;text-align:center;}
+  #saveModal{position:fixed;inset:0;z-index:15;display:flex;align-items:center;justify-content:center;background:rgba(3,6,12,.78);padding:18px;color:#fff;text-shadow:0 0 5px #000;}
+  #saveModal .sbox{width:min(720px,94vw);background:rgba(17,22,31,.98);border:2px solid rgba(159,224,255,.72);border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.72);padding:18px 20px;}
+  #saveModal h2{margin:0 0 5px;color:#9fe0ff;font-size:1.24rem;}
+  #saveModal .sdesc{color:#d9e6f2;font-size:.86rem;line-height:1.45;margin-bottom:10px;}
+  #saveModal .fileRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0;}
+  #saveModal .fileInfo{flex:1;min-width:220px;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.32);color:#d9e6f2;font-size:.82rem;text-shadow:none;}
+  #saveModal input[type=file]{display:none;}
+  #saveModal .sactions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px;flex-wrap:wrap;}
+  #saveModal button{border:0;border-radius:8px;padding:10px 14px;font-weight:900;cursor:pointer;text-shadow:none;}
+  #saveModal .primary{background:#9fe0ff;color:#10151c;}
+  #saveModal .warn{background:#ff6b6b;color:#fff;}
+  #saveModal .secondary{background:#2a2f3a;color:#d7e5f3;border:1px solid #4a5568;}
   #shipPanel .buildbar{height:8px;margin-top:9px;border-radius:999px;background:rgba(0,0,0,.38);border:1px solid rgba(255,255,255,.14);overflow:hidden;}
   #shipPanel .buildbar span{display:block;height:100%;background:linear-gradient(90deg,#ff8a3b,#ffd45d);width:0%;}
   @media (max-width:900px), (max-height:560px){
@@ -270,6 +302,9 @@
     #shipHud .shipHint{bottom:8px;font-size:11px;padding:7px 10px;}
     #shipPanel{right:8px;top:64px;width:min(300px,48vw);padding:10px 12px;}
     #shipPanel h3{font-size:.9rem;} #shipPanel .desc{font-size:.72rem;}
+    #mainMenu .menuGrid{grid-template-columns:1fr;}
+    #mainMenu button{font-size:.86rem;padding:10px 12px;}
+    #mainMenu .slotMeta{grid-template-columns:1fr 1fr;font-size:.68rem;}
   }
 
 </style>
@@ -338,6 +373,23 @@ body:not(.touch) #liveRecCard.collapsed{
     <div class="action" id="shipPanelAction">E: 상호작용</div>
   </div>
 
+  <div id="saveModal" class="hidden">
+    <div class="sbox">
+      <h2>💾 세이브 관리</h2>
+      <div class="sdesc" id="saveModalDesc">시설 상태와 설정은 자동 저장됩니다. 다른 환경에서 이어 하려면 .dtdsave 파일로 내보내고 가져오세요.</div>
+      <div class="fileRow">
+        <div class="fileInfo" id="saveFileInfo">현재 브라우저에 자동 저장 중입니다. 내보내기를 누르면 DELIVERY_TO_DIE_save_*.dtdsave 파일이 다운로드됩니다.</div>
+        <input id="saveFileInput" type="file" accept=".dtdsave,application/json">
+      </div>
+      <div class="sactions">
+        <button class="primary" id="saveExportBtn">.dtdsave 내보내기</button>
+        <button class="primary" id="saveImportBtn">.dtdsave 가져오기</button>
+        <button class="warn" id="saveResetBtn">저장 초기화</button>
+        <button class="secondary" id="saveCloseBtn">닫기</button>
+      </div>
+    </div>
+  </div>
+
   <div id="facilityModal" class="hidden">
     <div class="fbox">
       <div class="ftop">
@@ -404,6 +456,33 @@ body:not(.touch) #liveRecCard.collapsed{
     <button id="missionCloseBtn" class="hidden" aria-label="작전 선택 닫기">×</button>
     <h1>DELIVERY TO DIE</h1>
     <div class="tagline">— 화력을 소비하며 전선을 유지하는 협동 PvE 익스트랙션 (TPS 프로토타입) —</div>
+    <div id="mainMenu">
+      <div class="menuGrid">
+        <div class="menuButtons">
+          <button class="play" id="mainNewGameBtn">▶ 새 게임</button>
+          <button class="continue" id="mainContinueBtn">⏵ 이어하기</button>
+          <button class="save" id="mainExportBtn">💾 세이브 내보내기</button>
+          <button class="save" id="mainImportBtn">📂 세이브 가져오기</button>
+          <button class="warn" id="mainDeleteBtn">🗑 저장 데이터 삭제</button>
+        </div>
+        <div class="slotCard">
+          <div class="slotTitle">SAVE SLOT 1</div>
+          <div class="slotName" id="mainSaveSlotTitle">저장 데이터 없음</div>
+          <div class="slotMeta">
+            <div>시설 진행도<br><b id="mainSaveFacilities">0 / 0</b></div>
+            <div>보유 크레딧<br><b id="mainSaveCredits">0 C</b></div>
+            <div>플레이 통계<br><b id="mainSaveStats">Run 0 · Win 0</b></div>
+            <div>마지막 저장<br><b id="mainSaveUpdated">-</b></div>
+          </div>
+          <div class="saveNote">시설, 연구, 설계도, 인벤토리, 설정처럼 영구 진행도 가능성이 있는 데이터는 SaveManager에 우선 포함합니다. 런 중 임시 구매품은 현재 저장하지 않습니다.</div>
+        </div>
+      </div>
+      <div class="bottomRow">
+        <button class="subbtn" id="mainModsBtn">🧊 Mods</button>
+        <button class="subbtn" id="mainSettingsBtn">⚙ 설정</button>
+        <button class="subbtn" id="mainCreditsBtn">🚶 Credits</button>
+      </div>
+    </div>
     <div class="panel" style="display:none">
       <div><b>임무:</b> 넓은 전장에 흩어진 <b>목표(최소 10개)</b> 중 원하는 만큼 수행하고, 🚁 <b>탈출 지점</b>에서 로켓을 호출해 빠져나가라.</div>
       <div style="margin-top:8px"><b>탈출:</b> 탈출 지점에서 <span class="key">E</span>로 로켓 호출 → 강하한 로켓 탑승 구역에서 <b>30초</b> 버티면 탈출 성공.</div>
@@ -1386,17 +1465,182 @@ const SHIP_FACILITIES=[
   {id:"drone",name:"드론 센터",en:"Drone Center",state:FACILITY_STATE.BUILDABLE,cost:750,interactionType:"placeholder_drone",modulePosition:{x:2160,y:660,side:"bottom"},icon:"🤖",desc:"전투 드론을 정비하고 개조하는 격납고입니다. 이후 드론 해금과 재보급 성장이 연결됩니다."},
   {id:"ai",name:"AI 관제센터",en:"AI Control",state:FACILITY_STATE.BUILDABLE,cost:700,interactionType:"placeholder_ai",modulePosition:{x:2160,y:240,side:"top"},icon:"🧠",desc:"전장 분석과 AI 배송추천을 강화하는 관제 모듈입니다."}
 ];
+const SaveManager={
+  key:"DTD_SAVE_V2",
+  legacyKeys:["DTD_SAVE_V1","DTD_FACILITY_STATES_V1"],
+  version:2,
+  data:null,
+  makeDefault(){
+    return {
+      version:this.version,
+      updatedAt:new Date().toISOString(),
+      player:{credits:0},
+      settings:{aiRecommendEnabled:true},
+      facilities:{},
+      inventory:{weapons:{}, drones:{}, turrets:{}, consumables:{}, materials:{}, blueprints:{}},
+      research:{unlocked:{}, progress:{}},
+      economy:{contracts:{}, insurance:{}, vendors:{}},
+      stats:{runs:0, wins:0, deaths:0, totalCreditsEarned:0, totalCreditsSpent:0},
+      flags:{},
+      meta:{game:"DELIVERY_TO_DIE", saveType:"local-hq-growth", note:"세이브 가능성이 높은 데이터는 우선 포함한다. 최종 폴리싱 단계에서 영구/런 데이터를 재선별한다. 전투 1회성 상태는 현재 저장하지 않는다."}
+    };
+  },
+  normalize(data){
+    const base=this.makeDefault();
+    if(!data || typeof data!=="object") data={};
+    const merged={...base,...data};
+    merged.version=this.version;
+    merged.player={...base.player,...(data.player||{})};
+    merged.settings={...base.settings,...(data.settings||{})};
+    merged.facilities={...(data.facilities||{})};
+    merged.inventory={...base.inventory,...(data.inventory||{})};
+    merged.inventory.weapons={...(data.inventory&&data.inventory.weapons||{})};
+    merged.inventory.drones={...(data.inventory&&data.inventory.drones||{})};
+    merged.inventory.turrets={...(data.inventory&&data.inventory.turrets||{})};
+    merged.inventory.consumables={...(data.inventory&&data.inventory.consumables||{})};
+    merged.inventory.materials={...(data.inventory&&data.inventory.materials||{})};
+    merged.inventory.blueprints={...(data.inventory&&data.inventory.blueprints||{})};
+    merged.research={...base.research,...(data.research||{})};
+    merged.research.unlocked={...(data.research&&data.research.unlocked||{})};
+    merged.research.progress={...(data.research&&data.research.progress||{})};
+    merged.economy={...base.economy,...(data.economy||{})};
+    merged.economy.contracts={...(data.economy&&data.economy.contracts||{})};
+    merged.economy.insurance={...(data.economy&&data.economy.insurance||{})};
+    merged.economy.vendors={...(data.economy&&data.economy.vendors||{})};
+    merged.stats={...base.stats,...(data.stats||{})};
+    merged.flags={...(data.flags||{})};
+    merged.meta={...base.meta,...(data.meta||{})};
+    merged.settings.aiRecommendEnabled=merged.settings.aiRecommendEnabled!==false;
+    return merged;
+  },
+  load(){
+    let data=null;
+    try{ const raw=localStorage.getItem(this.key); if(raw) data=JSON.parse(raw); }catch(e){ data=null; }
+    if(!data) data=this.loadLegacyData();
+    this.data=this.normalize(data);
+    this.importLegacyFacilityStates();
+    this.save();
+    return this.data;
+  },
+  loadLegacyData(){
+    try{ const raw=localStorage.getItem("DTD_SAVE_V1"); if(raw) return JSON.parse(raw); }catch(e){}
+    return this.makeDefault();
+  },
+  migrate(old){ return this.normalize(old); },
+  importLegacyFacilityStates(){
+    try{
+      const raw=localStorage.getItem("DTD_FACILITY_STATES_V1"); if(!raw) return;
+      const legacy=JSON.parse(raw);
+      if(legacy && typeof legacy==="object"){
+        for(const id in legacy){ if(legacy[id] && FACILITY_STATE[legacy[id]]) this.data.facilities[id]=legacy[id]; }
+      }
+      localStorage.removeItem("DTD_FACILITY_STATES_V1");
+    }catch(e){}
+  },
+  save(){
+    if(!this.data) this.data=this.makeDefault();
+    this.data.updatedAt=new Date().toISOString();
+    try{ localStorage.setItem(this.key,JSON.stringify(this.data)); return true; }catch(e){ return false; }
+  },
+  hasMeaningfulProgress(){
+    if(!this.data) this.load();
+    const fac=this.data.facilities||{};
+    for(const id in fac){ if(fac[id]===FACILITY_STATE.ACTIVE || fac[id]===FACILITY_STATE.BUILDING) return true; }
+    const stats=this.data.stats||{};
+    if((stats.runs||0)>0 || (stats.wins||0)>0 || (stats.deaths||0)>0) return true;
+    const inv=this.data.inventory||{};
+    for(const k of ["weapons","drones","turrets","consumables","materials","blueprints"]){ if(inv[k] && Object.keys(inv[k]).length>0) return true; }
+    const res=this.data.research||{};
+    if(res.unlocked && Object.keys(res.unlocked).length>0) return true;
+    return false;
+  },
+  summary(){
+    if(!this.data) this.load();
+    const total=SHIP_FACILITIES.filter(f=>f.id!=="launch").length;
+    let active=0, building=0;
+    for(const f of SHIP_FACILITIES){
+      if(f.id==="launch") continue;
+      const st=(this.data.facilities&&this.data.facilities[f.id])||f.state;
+      if(st===FACILITY_STATE.ACTIVE) active++;
+      if(st===FACILITY_STATE.BUILDING) building++;
+    }
+    const stats=this.data.stats||{};
+    return {
+      hasProgress:this.hasMeaningfulProgress(),
+      activeFacilities:active, buildingFacilities:building, totalFacilities:total,
+      credits:(this.data.player&&this.data.player.credits)||0,
+      runs:stats.runs||0, wins:stats.wins||0, deaths:stats.deaths||0,
+      updatedAt:this.data.updatedAt||"-"
+    };
+  },
+  getFacilityState(id){ return this.data && this.data.facilities ? this.data.facilities[id] : null; },
+  setFacilityState(id,state){ if(!this.data) this.load(); if(state && FACILITY_STATE[state]){ this.data.facilities[id]=state; this.save(); } },
+  saveFacilityStates(facilities){
+    if(!this.data) this.load();
+    this.data.facilities={};
+    for(const f of facilities) this.data.facilities[f.id]=f.state;
+    this.save();
+  },
+  getSetting(key,def){ return this.data && this.data.settings && this.data.settings[key]!==undefined ? this.data.settings[key] : def; },
+  setSetting(key,val){ if(!this.data) this.load(); this.data.settings[key]=val; this.save(); },
+  snapshot(){ if(!this.data) this.load(); this.save(); return this.normalize(this.data); },
+  exportFile(){
+    const data=this.snapshot();
+    const json=JSON.stringify(data,null,2);
+    const stamp=new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d+Z$/,"");
+    const filename=`DELIVERY_TO_DIE_save_${stamp}.dtdsave`;
+    const blob=new Blob([json],{type:"application/json"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    return filename;
+  },
+  importObject(obj){
+    if(!obj || typeof obj!=="object") throw new Error("세이브 파일 형식이 올바르지 않습니다.");
+    if(obj.meta && obj.meta.game && obj.meta.game!=="DELIVERY_TO_DIE") throw new Error("다른 게임의 세이브입니다.");
+    const parsed=this.normalize(obj);
+    const validFacilities={};
+    for(const f of SHIP_FACILITIES){
+      const st=parsed.facilities && parsed.facilities[f.id];
+      if(st && FACILITY_STATE[st]) validFacilities[f.id]=st;
+    }
+    parsed.facilities=validFacilities;
+    this.data=parsed; this.save(); return this.data;
+  },
+  importFile(file){
+    return new Promise((resolve,reject)=>{
+      if(!file) return reject(new Error("가져올 .dtdsave 파일을 선택하세요."));
+      const reader=new FileReader();
+      reader.onload=()=>{
+        try{ const obj=JSON.parse(String(reader.result||"")); resolve(this.importObject(obj)); }
+        catch(e){ reject(e); }
+      };
+      reader.onerror=()=>reject(new Error("세이브 파일을 읽지 못했습니다."));
+      reader.readAsText(file,"utf-8");
+    });
+  },
+  reset(){
+    this.data=this.makeDefault();
+    try{ for(const k of [this.key,...this.legacyKeys]) localStorage.removeItem(k); }catch(e){}
+    this.save(); return this.data;
+  }
+};
+SaveManager.load();
+
 const FacilityManager={
   facilities:SHIP_FACILITIES,
   active:null,
   load(){
-    try{ const raw=localStorage.getItem("DTD_FACILITY_STATES_V1"); if(!raw) return; const saved=JSON.parse(raw);
-      for(const f of this.facilities){ if(f.id!=="launch" && saved[f.id] && FACILITY_STATE[saved[f.id]]) f.state=saved[f.id]; }
-    }catch(e){}
+    for(const f of this.facilities){
+      if(f.id==="launch"){ f.state=FACILITY_STATE.ACTIVE; continue; }
+      const st=SaveManager.getFacilityState(f.id);
+      if(st && FACILITY_STATE[st]) f.state=st;
+      else f.state=FACILITY_STATE.BUILDABLE;
+      f.buildT=0; f.buildMax=0;
+    }
   },
-  save(){
-    try{ const out={}; for(const f of this.facilities) out[f.id]=f.state; localStorage.setItem("DTD_FACILITY_STATES_V1",JSON.stringify(out)); }catch(e){}
-  },
+  save(){ SaveManager.saveFacilityStates(this.facilities); if(appMode==="menu") refreshMainMenuSaveInfo(); },
   pos(f){ return f.modulePosition || {x:f.x,y:f.y,side:f.side||"top"}; },
   doorPoint(f){ const p=this.pos(f); return {x:p.x,y:p.side==="top"?300:600}; },
   isActive(f){ return f && f.state===FACILITY_STATE.ACTIVE; },
@@ -1475,11 +1719,83 @@ const logEl=document.getElementById("log");
 const shipHud=document.getElementById("shipHud"),shipPanel=document.getElementById("shipPanel"),shipHint=document.getElementById("shipHint");
 const shipPanelTitle=document.getElementById("shipPanelTitle"),shipPanelState=document.getElementById("shipPanelState"),shipPanelDesc=document.getElementById("shipPanelDesc"),shipPanelAction=document.getElementById("shipPanelAction");
 const facilityModal=document.getElementById("facilityModal"),facilityModalTitle=document.getElementById("facilityModalTitle"),facilityModalState=document.getElementById("facilityModalState"),facilityModalDesc=document.getElementById("facilityModalDesc"),facilityModalInteraction=document.getElementById("facilityModalInteraction"),facilityModalPosition=document.getElementById("facilityModalPosition"),facilityModalActions=document.getElementById("facilityModalActions"),facilityModalClose=document.getElementById("facilityModalClose");
+const mainMenu=document.getElementById("mainMenu"),mainNewGameBtn=document.getElementById("mainNewGameBtn"),mainContinueBtn=document.getElementById("mainContinueBtn"),mainExportBtn=document.getElementById("mainExportBtn"),mainImportBtn=document.getElementById("mainImportBtn"),mainDeleteBtn=document.getElementById("mainDeleteBtn"),mainModsBtn=document.getElementById("mainModsBtn"),mainSettingsBtn=document.getElementById("mainSettingsBtn"),mainCreditsBtn=document.getElementById("mainCreditsBtn");
+const mainSaveSlotTitle=document.getElementById("mainSaveSlotTitle"),mainSaveFacilities=document.getElementById("mainSaveFacilities"),mainSaveCredits=document.getElementById("mainSaveCredits"),mainSaveStats=document.getElementById("mainSaveStats"),mainSaveUpdated=document.getElementById("mainSaveUpdated");
+const saveModal=document.getElementById("saveModal"),saveFileInfo=document.getElementById("saveFileInfo"),saveFileInput=document.getElementById("saveFileInput"),saveExportBtn=document.getElementById("saveExportBtn"),saveImportBtn=document.getElementById("saveImportBtn"),saveResetBtn=document.getElementById("saveResetBtn"),saveCloseBtn=document.getElementById("saveCloseBtn"),saveModalDesc=document.getElementById("saveModalDesc");
+applySaveToRuntime();
 
 let W=0,H=0;
 function resize(){W=canvas.width=innerWidth;H=canvas.height=innerHeight;}
 addEventListener("resize",resize); resize();
 if(window.visualViewport){ visualViewport.addEventListener("resize",resize); }   // 모바일 주소창 접힘/펼침 대응
+function applySaveToRuntime(){
+  SaveManager.load(); FacilityManager.load();
+  aiRecommendEnabled=SaveManager.getSetting("aiRecommendEnabled",true);
+  if(assistToggleInput) assistToggleInput.checked=aiRecommendEnabled;
+}
+function openSaveModal(){
+  if(!saveModal) return;
+  SaveManager.saveFacilityStates(FacilityManager.facilities);
+  SaveManager.setSetting("aiRecommendEnabled", assistToggleInput ? assistToggleInput.checked : aiRecommendEnabled);
+  if(saveFileInput) saveFileInput.value="";
+  if(saveFileInfo) saveFileInfo.textContent="현재 브라우저에 자동 저장 중입니다. 내보내기를 누르면 .dtdsave 파일이 다운로드됩니다.";
+  saveModalDesc.textContent="시설 상태와 설정은 자동 저장됩니다. 다른 환경에서 이어 하려면 .dtdsave 파일로 내보내고 가져오세요.";
+  saveModal.classList.remove("hidden");
+}
+function closeSaveModal(){ if(saveModal) saveModal.classList.add("hidden"); }
+function formatSaveDate(iso){
+  if(!iso || iso==="-") return "-";
+  try{ const d=new Date(iso); if(isNaN(d.getTime())) return "-"; return d.toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}); }catch(e){ return "-"; }
+}
+function refreshMainMenuSaveInfo(){
+  if(!mainMenu) return;
+  const sum=SaveManager.summary();
+  if(mainSaveSlotTitle) mainSaveSlotTitle.textContent=sum.hasProgress?"진행 중인 저장 데이터":"저장 데이터 없음";
+  if(mainSaveFacilities) mainSaveFacilities.textContent=`${sum.activeFacilities} / ${sum.totalFacilities}${sum.buildingFacilities?` · 건설중 ${sum.buildingFacilities}`:""}`;
+  if(mainSaveCredits) mainSaveCredits.textContent=`${sum.credits.toLocaleString()} C`;
+  if(mainSaveStats) mainSaveStats.textContent=`Run ${sum.runs} · Win ${sum.wins}`;
+  if(mainSaveUpdated) mainSaveUpdated.textContent=sum.hasProgress?formatSaveDate(sum.updatedAt):"-";
+  if(mainContinueBtn) mainContinueBtn.disabled=!sum.hasProgress;
+  if(mainExportBtn) mainExportBtn.disabled=!sum.hasProgress;
+  if(mainDeleteBtn) mainDeleteBtn.disabled=!sum.hasProgress;
+}
+function startNewGameFromMenu(){
+  const has=SaveManager.summary().hasProgress;
+  if(has && !confirm("새 게임을 시작할까요? 기존 저장 데이터는 삭제됩니다.")) return;
+  SaveManager.reset(); applySaveToRuntime(); refreshMainMenuSaveInfo(); enterShip("newGame");
+}
+function continueGameFromMenu(){
+  if(!SaveManager.summary().hasProgress){ toast("저장 데이터가 없습니다."); return; }
+  applySaveToRuntime(); enterShip("continue");
+}
+function deleteSaveFromMenu(){
+  if(!SaveManager.summary().hasProgress) return;
+  if(!confirm("저장 데이터를 삭제할까요? 이 작업은 되돌릴 수 없습니다.")) return;
+  SaveManager.reset(); applySaveToRuntime(); refreshMainMenuSaveInfo(); toast("🧹 저장 데이터 삭제 완료");
+}
+function exportSaveFromMenu(){
+  if(!SaveManager.summary().hasProgress){ toast("내보낼 저장 데이터가 없습니다."); return; }
+  const filename=SaveManager.exportFile(); refreshMainMenuSaveInfo(); toast(`💾 내보내기 완료: ${filename}`);
+}
+function importSaveFromMenu(){ if(saveFileInput){ saveFileInput.value=""; saveFileInput.click(); } }
+function exportSaveCode(){
+  SaveManager.saveFacilityStates(FacilityManager.facilities);
+  SaveManager.setSetting("aiRecommendEnabled", assistToggleInput ? assistToggleInput.checked : aiRecommendEnabled);
+  const filename=SaveManager.exportFile();
+  if(saveFileInfo) saveFileInfo.textContent=`내보내기 완료: ${filename}`;
+  saveModalDesc.textContent=".dtdsave 파일이 다운로드되었습니다. 다른 브라우저/PC에서는 가져오기로 이 파일을 선택하세요.";
+}
+function importSaveCode(){
+  if(!saveFileInput || !saveFileInput.files || !saveFileInput.files[0]){ if(saveFileInput) saveFileInput.click(); return; }
+  const file=saveFileInput.files[0];
+  SaveManager.importFile(file).then(()=>{
+    applySaveToRuntime(); closeSaveModal(); refreshMainMenuSaveInfo(); shipNoticeT=2.0; if(typeof toast==="function") toast("✅ 세이브 가져오기 완료");
+  }).catch(e=>{ saveModalDesc.textContent="가져오기 실패: "+(e&&e.message?e.message:"세이브 파일을 확인하세요."); });
+}
+function resetSaveData(){
+  if(!confirm("저장된 시설 상태와 설정을 초기화할까요?")) return;
+  SaveManager.reset(); applySaveToRuntime(); closeSaveModal(); refreshMainMenuSaveInfo(); shipNoticeT=2.0; if(typeof toast==="function") toast("🧹 저장 데이터 초기화 완료");
+}
 // 모바일: 전체화면으로 전환해 주소표시줄/브라우저 UI를 숨김(사용자 제스처에서만 허용)
 function goFullscreen(){ try{ const el=document.documentElement; if(document.fullscreenElement||document.webkitFullscreenElement) return;
   const rq=el.requestFullscreen||el.webkitRequestFullscreen||el.webkitRequestFullScreen||el.mozRequestFullScreen||el.msRequestFullscreen;
@@ -1490,6 +1806,7 @@ addEventListener("keydown",e=>{
   keys[e.code]=true;
   if(e.code==="KeyM"){ setTouch(!isTouch); pushLog(isTouch?"📱 모바일 HUD 미리보기 ON (마우스로 조작)":"🖥️ 모바일 HUD OFF","#9fe0ff"); return; }   // PC 테스트용 토글
   if(e.code==="F9"){ debugToggle(); e.preventDefault(); return; }
+  if(e.code==="Escape" && saveModal && !saveModal.classList.contains("hidden")){ closeSaveModal(); e.preventDefault(); return; }
   if(appMode==="ship"){
     if(e.code==="Escape"){ if(facilityModal&&!facilityModal.classList.contains("hidden")) FacilityManager.closeModal(); e.preventDefault(); return; }   // Phase 1: 처음부터 우주선이 메인 화면이므로 별도 메뉴로 빠지지 않는다.
     if(e.code==="KeyE"){ shipInteract(); e.preventDefault(); return; }
@@ -1539,6 +1856,20 @@ startBtn.addEventListener("click",handleStartButton);
 if(missionCloseBtn) missionCloseBtn.addEventListener("click",e=>{ e.preventDefault(); if(appMode==="missionSelect") closeMissionSelect(); });
 if(facilityModalClose) facilityModalClose.addEventListener("click",e=>{ e.preventDefault(); FacilityManager.closeModal(); });
 if(facilityModal) facilityModal.addEventListener("pointerdown",e=>{ if(e.target===facilityModal) FacilityManager.closeModal(); });
+if(mainNewGameBtn) mainNewGameBtn.addEventListener("click",e=>{ e.preventDefault(); startNewGameFromMenu(); });
+if(mainContinueBtn) mainContinueBtn.addEventListener("click",e=>{ e.preventDefault(); continueGameFromMenu(); });
+if(mainExportBtn) mainExportBtn.addEventListener("click",e=>{ e.preventDefault(); exportSaveFromMenu(); });
+if(mainImportBtn) mainImportBtn.addEventListener("click",e=>{ e.preventDefault(); importSaveFromMenu(); });
+if(mainDeleteBtn) mainDeleteBtn.addEventListener("click",e=>{ e.preventDefault(); deleteSaveFromMenu(); });
+if(mainModsBtn) mainModsBtn.addEventListener("click",e=>{ e.preventDefault(); toast("Mods는 이후 Phase에서 연결됩니다."); });
+if(mainSettingsBtn) mainSettingsBtn.addEventListener("click",e=>{ e.preventDefault(); toast("설정은 이후 Phase에서 확장됩니다."); });
+if(mainCreditsBtn) mainCreditsBtn.addEventListener("click",e=>{ e.preventDefault(); toast("DELIVERY TO DIE Prototype"); });
+if(saveCloseBtn) saveCloseBtn.addEventListener("click",e=>{ e.preventDefault(); closeSaveModal(); });
+if(saveExportBtn) saveExportBtn.addEventListener("click",e=>{ e.preventDefault(); exportSaveCode(); });
+if(saveImportBtn) saveImportBtn.addEventListener("click",e=>{ e.preventDefault(); if(saveFileInput && (!saveFileInput.files || !saveFileInput.files[0])) saveFileInput.click(); else importSaveCode(); });
+if(saveFileInput) saveFileInput.addEventListener("change",()=>{ if(saveFileInput.files && saveFileInput.files[0]){ if(saveFileInfo) saveFileInfo.textContent=`선택된 파일: ${saveFileInput.files[0].name}`; importSaveCode(); } });
+if(saveResetBtn) saveResetBtn.addEventListener("click",e=>{ e.preventDefault(); resetSaveData(); });
+if(saveModal) saveModal.addEventListener("pointerdown",e=>{ if(e.target===saveModal) closeSaveModal(); });
 reviveBtn.addEventListener("pointerup",e=>{ e.preventDefault(); doRevive(); });
 // ----- 난이도 선택 UI -----
 function renderDiffSel(){
@@ -1642,11 +1973,13 @@ function showInitialMenu(){
   overlay.querySelector("h1").textContent="DELIVERY TO DIE";
   overlay.querySelector(".tagline").textContent="— 화력을 소비하며 전선을 유지하는 협동 PvE 익스트랙션 (TPS 프로토타입) —";
   const panel=overlay.querySelector(".panel"); if(panel) panel.style.display="none";
+  if(mainMenu) mainMenu.style.display="flex";
+  refreshMainMenuSaveInfo();
   const diffSel=document.getElementById("diffSel"); if(diffSel) diffSel.style.display="none";
   if(assistToggle) assistToggle.style.display="none";
   if(missionCloseBtn) missionCloseBtn.classList.add("hidden");
-  reviveBtn.style.display="none"; startBtn.textContent="우주선 입장";
-  document.getElementById("hud").classList.add("hidden"); shipHud.classList.add("hidden"); shipPanel.classList.add("hidden"); FacilityManager.closeModal();
+  reviveBtn.style.display="none"; startBtn.style.display="none"; startBtn.textContent="우주선 입장";
+  document.getElementById("hud").classList.add("hidden"); shipHud.classList.add("hidden"); shipPanel.classList.add("hidden"); closeSaveModal(); FacilityManager.closeModal();
   buyMenu.classList.add("hidden"); startRecommend.classList.add("hidden"); liveRecCard.classList.add("hidden"); damageEl.style.opacity="0";
   overlay.classList.remove("hidden");
 }
@@ -1656,7 +1989,7 @@ function enterShip(reason="initial"){
   overlay.classList.add("hidden"); buyMenu.classList.add("hidden"); startRecommend.classList.add("hidden");
   document.getElementById("hud").classList.add("hidden");
   liveRecCard.classList.add("hidden"); damageEl.style.opacity="0";
-  shipHud.classList.remove("hidden"); shipPanel.classList.add("hidden"); FacilityManager.closeModal();
+  shipHud.classList.remove("hidden"); shipPanel.classList.add("hidden"); closeSaveModal(); FacilityManager.closeModal();
   appMode="ship"; missionReturnMode=null; shipRunning=true; running=false; buyOpen=false; startRecOpen=false; deathPending=false; firing=false;
   // Phase 1 확장성: 우주선 복귀 시에는 출격 베이 근처에 내려 동선을 짧게 유지한다.
   if(reason==="return_win" || reason==="return_fail" || reason==="return_down"){ shipPlayer.x=1200; shipPlayer.y=625; shipPlayer.aim=-Math.PI/2; }
@@ -1665,7 +1998,7 @@ function enterShip(reason="initial"){
   shipLastTime=performance.now(); requestAnimationFrame(shipLoop);
 }
 function openMissionSelect(){
-  missionReturnMode=null; appMode="missionSelect"; shipRunning=false; shipPanel.classList.add("hidden"); FacilityManager.closeModal();
+  missionReturnMode=null; appMode="missionSelect"; shipRunning=false; shipPanel.classList.add("hidden"); closeSaveModal(); FacilityManager.closeModal();
   renderDiffSel();
   showOverlay("🛰️ 작전 선택", "출격 베이 관제 단말에서 이번 작전 난이도와 적 조합을 선택하세요.", "작전 시작", false, true);
   shipHud.classList.remove("hidden");
@@ -1674,7 +2007,7 @@ function closeMissionSelect(){
   overlay.classList.add("hidden"); if(missionCloseBtn) missionCloseBtn.classList.add("hidden"); appMode="ship"; shipRunning=true; shipLastTime=performance.now(); requestAnimationFrame(shipLoop);
 }
 function launchSelectedMission(){
-  missionReturnMode=null; shipRunning=false; appMode="mission"; shipHud.classList.add("hidden"); shipPanel.classList.add("hidden"); FacilityManager.closeModal();
+  missionReturnMode=null; shipRunning=false; appMode="mission"; shipHud.classList.add("hidden"); shipPanel.classList.add("hidden"); closeSaveModal(); FacilityManager.closeModal();
   document.getElementById("hud").classList.remove("hidden");
   started=false; startOrResume();
 }
@@ -1853,7 +2186,8 @@ function resetGame(){
   airstrikes=[]; chargeT=0; nukeFlash=0; lasers=[]; flameSnd=0; lure=null; drone=null; dbeams=[]; shuttles=[]; scatters=[];
   rocket={state:"idle",z:0,timer:30}; logLines=[]; reviveCount=0; shopAdShown=false; adviceCD=0; recEvalCD=0; liveRecPeek=0; recCooldowns={};
   startRecOpen=false; liveRec=null; liveRecTimer=0; liveRecCard.classList.add("hidden"); liveRecCard.classList.remove("collapsed"); startRecommend.classList.add("hidden");
-  aiRecommendEnabled = assistToggleInput ? assistToggleInput.checked : aiRecommendEnabled;
+  aiRecommendEnabled = assistToggleInput ? assistToggleInput.checked : SaveManager.getSetting("aiRecommendEnabled",aiRecommendEnabled);
+  SaveManager.setSetting("aiRecommendEnabled", aiRecommendEnabled);
   deathPending=false; deathT=0; player.dead=false; player.deathAng=0;
   const briefingMeta=operationMeta;
   operationMeta=prepareOperationMetaForLaunch(operationMeta);
@@ -1866,6 +2200,8 @@ function resetGame(){
 }
 function showOverlay(t,m,b,hidePanel,showDiff){
   overlay.querySelector("h1").textContent=t; overlay.querySelector(".tagline").textContent=m;
+  if(mainMenu) mainMenu.style.display="none";
+  startBtn.style.display="";
   overlay.querySelector(".panel").style.display=hidePanel?"none":"block";
   document.getElementById("diffSel").style.display=showDiff?"":"none";   // 난이도 선택은 작전 선택 화면에서만
   if(assistToggle) assistToggle.style.display=showDiff?"":"none";
