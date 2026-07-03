@@ -1453,6 +1453,11 @@ function tpos(e){ const r=canvas.getBoundingClientRect(); return {x:e.clientX-r.
 canvas.addEventListener("pointerdown",e=>{ if(e.pointerType==="mouse" && !isTouch) return; setTouch(true);
   if(!running && appMode!=="ship") return; const p=tpos(e);
   if(appMode==="ship"){
+    // HQ도 인게임 모바일 HUD와 같은 입력 체계를 사용한다.
+    // 우측 액션 버튼(E)을 먼저 판정하고, 그 외 영역은 인게임과 동일한 좌/우 스틱으로 처리한다.
+    for(const b of mobBtns()){
+      if(btnHit(b,p.x,p.y)){ b.on(); e.preventDefault(); return; }
+    }
     if(p.x<W*0.5 && !lj.active){ lj.active=true; lj.id=e.pointerId; lj.ox=p.x; lj.oy=p.y; lj.x=p.x; lj.y=p.y; lj.mag=0; }
     else if(p.x>=W*0.5 && !rj.active){ rj.active=true; rj.id=e.pointerId; rj.ox=p.x; rj.oy=p.y; rj.ang=shipPlayer.aim; rj.mag=0; }
     e.preventDefault(); return;
@@ -1466,7 +1471,7 @@ canvas.addEventListener("pointerdown",e=>{ if(e.pointerType==="mouse" && !isTouc
   }
   e.preventDefault(); },{passive:false});
 function btnHit(b,px,py){ return b.rect ? (Math.abs(px-b.x)<b.w/2 && Math.abs(py-b.y)<b.h/2) : (Math.hypot(px-b.x,py-b.y)<b.r); }
-function mobBtns(){ const u=Math.max(30,Math.min(44,Math.min(W,H)*0.062));
+function battleMobBtns(){ const u=Math.max(30,Math.min(44,Math.min(W,H)*0.062));
   const g=u*2.35, te=u*0.95;                        // 우상단: 📦추천(좌, DOM) · 🛒구매(중) · 🗺️지도(우)
   const sw=u*2.0, sh=u*1.15, ssp=sw+6, sy=H-sh*0.62, sx=W/2-ssp;   // 무기 슬롯(정보 통합)
   const list=[
@@ -1484,6 +1489,23 @@ function mobBtns(){ const u=Math.max(30,Math.min(44,Math.min(W,H)*0.062));
   if(Math.hypot(player.x-EXIT.x,player.y-EXIT.y) < (EXIT.r||60)+90)   // 탈출 지점 진입 시에만 우중앙에 탈출 버튼
     list.push({id:"extract", x:W-u*1.5, y:H*0.5, r:u*1.05, ic:"🚀", hot:true, on:()=>callRocket()});
   return list;
+}
+
+function shipMobBtns(){
+  const u=Math.max(30,Math.min(44,Math.min(W,H)*0.062));
+  const te=u*0.95, g=u*2.35;
+  const list=[
+    {id:"shipInteract", x:W-u*1.4, y:H-u*1.4, r:u, ic:"E", label:"상호작용", hot:!!shipFocus, on:()=>shipInteract()},
+    {id:"shipMap", x:W-te, y:te, r:u*0.7, ic:"🗺️", on:()=>{}},
+  ];
+  if(appMode==="ship" && shipFocus && shipFocus.id==="launch"){
+    list[0].ic="🚀"; list[0].label="작전"; list[0].hot=true;
+  }
+  return list;
+}
+function mobBtns(){
+  if(appMode==="ship") return shipMobBtns();
+  return battleMobBtns();
 }
 canvas.addEventListener("pointermove",e=>{ if(e.pointerType==="mouse" && !isTouch) return; const p=tpos(e);
   if(e.pointerId===lj.id){ let dx=p.x-lj.ox,dy=p.y-lj.oy,d=Math.hypot(dx,dy); if(d>JR){ dx*=JR/d; dy*=JR/d; d=JR; } lj.x=lj.ox+dx; lj.y=lj.oy+dy; lj.mag=d/JR;
@@ -1646,6 +1668,8 @@ function renderShip(){
   ctx.restore();
   // 화면 고정 오버레이 안내
   if(shipNoticeT>0){ ctx.fillStyle=`rgba(255,212,93,${Math.min(.9,shipNoticeT)})`; ctx.font="bold 22px Malgun Gothic, sans-serif"; ctx.textAlign="center"; ctx.fillText("우주 물류선 메인 스트리트",W/2,90); }
+  // 모바일은 인게임과 동일한 캔버스 HUD(좌/우 스틱, 액션 버튼)를 HQ에서도 렌더링한다.
+  drawTouchHUD();
 }
 function drawShipFacility(f){
   const top=f.side==="top", doorY=top?286:600, modY=top?132:626, h=126, w=f.id==="trade"?250:190;
@@ -3852,10 +3876,10 @@ function drawThrowGhost(){ if(!(throwAim&&rj.active) && heldBeacon<0) return;
   ctx.restore(); }
 function drawTouchHUD(){
   if(!isTouch) return; ctx.save();
-  // 액션 버튼
   ctx.textAlign="center"; ctx.textBaseline="middle";
+  const hqMode=appMode==="ship";
   for(const b of mobBtns()){
-    if(b.rect){   // 무기 슬롯 = 정보 통합 버튼(이름+탄약)
+    if(!hqMode && b.rect){   // 인게임 무기 슬롯 = 정보 통합 버튼(이름+탄약)
       const act=activeSlot===b.slot, sl=slots[b.slot];
       let nm,am,empty=false;
       if(sl.type==="gun"){ if(sl.wi==null){ nm=(b.slot+1)+". 없음"; am="-"; empty=true; } else { const w=WEAPONS[sl.wi]; nm=(b.slot+1)+". "+w.name; am=ammoText(w); } }
@@ -3865,27 +3889,29 @@ function drawTouchHUD(){
       ctx.globalAlpha=0.85; ctx.strokeStyle=act?"#7CFFB2":(empty?"#555":"#6a7686"); ctx.lineWidth=act?3:2; roundRect(x,y,b.w,b.h,8); ctx.stroke();
       ctx.globalAlpha=1; ctx.fillStyle=empty?"#777":(act?"#dffded":"#cfd6e0"); ctx.font="bold "+Math.round(b.h*0.28)+"px sans-serif"; ctx.fillText(nm,b.x,b.y-b.h*0.20);
       ctx.fillStyle=act?"#ffd45d":"#9fb0c0"; ctx.font="bold "+Math.round(b.h*0.34)+"px sans-serif"; ctx.fillText(am,b.x,b.y+b.h*0.22);
-    } else if(b.med){   // 메디킷 = 회복 UI 통합(개수)
+    } else if(!hqMode && b.med){   // 인게임 메디킷 = 회복 UI 통합(개수)
       const ok=player.medkits>0&&player.hp<100;
       ctx.globalAlpha=0.34; ctx.fillStyle=player.healing?"#1d3a2a":"#0d1016"; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,7); ctx.fill();
       ctx.globalAlpha=0.85; ctx.strokeStyle=ok?"#5dff9b":"#6a7686"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,7); ctx.stroke();
       ctx.globalAlpha=1; ctx.fillStyle="#eef"; ctx.font=Math.round(b.r*0.8)+"px sans-serif"; ctx.fillText("💉",b.x,b.y-b.r*0.18);
       ctx.fillStyle=player.medkits>0?"#5dff9b":"#888"; ctx.font="bold "+Math.round(b.r*0.55)+"px sans-serif"; ctx.fillText("×"+player.medkits,b.x,b.y+b.r*0.5);
     } else {
-      const hot=b.hot;
-      ctx.globalAlpha=hot?0.6:0.34; ctx.fillStyle=hot?"#7a2a10":"#0d1016"; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,7); ctx.fill();
-      ctx.globalAlpha=hot?1:0.7; ctx.strokeStyle=hot?"#ffae3a":"#6a7686"; ctx.lineWidth=hot?3:2; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,7); ctx.stroke();
-      ctx.globalAlpha=1; ctx.fillStyle="#eef"; ctx.font=Math.round(b.r*0.9)+"px sans-serif"; ctx.fillText(b.ic,b.x,b.y+1);
-      if(hot){ ctx.fillStyle="#ffd45d"; ctx.font="bold 12px sans-serif"; ctx.fillText("탈출 E",b.x,b.y+b.r+12); }
+      const hot=!!b.hot;
+      ctx.globalAlpha=hot?0.62:0.34; ctx.fillStyle=hot?"#7a4a10":"#0d1016"; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,7); ctx.fill();
+      ctx.globalAlpha=hot?1:0.72; ctx.strokeStyle=hot?"#ffd45d":"#6a7686"; ctx.lineWidth=hot?3:2; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,7); ctx.stroke();
+      ctx.globalAlpha=1; ctx.fillStyle="#eef"; ctx.font=(b.ic==="E"?"bold ":"")+Math.round(b.r*(b.ic==="E"?0.72:0.9))+"px sans-serif"; ctx.fillText(b.ic,b.x,b.y+1);
+      if(b.label){ ctx.fillStyle=hot?"#ffd45d":"#9fb4c8"; ctx.font="bold 12px sans-serif"; ctx.fillText(b.label,b.x,b.y+b.r+13); }
+      else if(hot){ ctx.fillStyle="#ffd45d"; ctx.font="bold 12px sans-serif"; ctx.fillText("탈출 E",b.x,b.y+b.r+12); }
     }
   }
   ctx.globalAlpha=1;
+  // 인게임과 HQ 공통 좌/우 스틱 렌더링
   if(lj.active){ ctx.globalAlpha=0.25; ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(lj.ox,lj.oy,JR,0,7); ctx.fill();
     ctx.globalAlpha=0.6; ctx.fillStyle="#7CFFB2"; ctx.beginPath(); ctx.arc(lj.x,lj.y,30,0,7); ctx.fill(); }
   if(rj.active){ const kx=rj.ox+Math.cos(rj.ang)*JR*rj.mag, ky=rj.oy+Math.sin(rj.ang)*JR*rj.mag;
     ctx.globalAlpha=0.22; ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(rj.ox,rj.oy,JR,0,7); ctx.fill();
-    ctx.globalAlpha=0.4; ctx.strokeStyle="#ff9d3a"; ctx.lineWidth=4; ctx.beginPath(); ctx.moveTo(rj.ox,rj.oy); ctx.lineTo(rj.ox+Math.cos(rj.ang)*JR,rj.oy+Math.sin(rj.ang)*JR); ctx.stroke();
-    ctx.globalAlpha=0.7; ctx.fillStyle="#ff7a3a"; ctx.beginPath(); ctx.arc(kx,ky,30,0,7); ctx.fill(); }
+    ctx.globalAlpha=0.4; ctx.strokeStyle=hqMode?"#7fd0ff":"#ff9d3a"; ctx.lineWidth=4; ctx.beginPath(); ctx.moveTo(rj.ox,rj.oy); ctx.lineTo(rj.ox+Math.cos(rj.ang)*JR,rj.oy+Math.sin(rj.ang)*JR); ctx.stroke();
+    ctx.globalAlpha=0.7; ctx.fillStyle=hqMode?"#7fd0ff":"#ff7a3a"; ctx.beginPath(); ctx.arc(kx,ky,30,0,7); ctx.fill(); }
   ctx.restore();
 }
 function drawMedkitHUD(){   // 좌하단 메디킷 보유 표시 (모바일은 슬롯 옆 💉 버튼에 통합)
