@@ -1909,12 +1909,12 @@ function preparePlayerSprite(){
 }
 PLAYER_SPRITE.image.onload=preparePlayerSprite;
 PLAYER_SPRITE.image.onload=()=>{
-  console.log('Player sprite loaded: Character _PC(2).png');
+  console.log('Player sprite loaded: Character _PC.png');
 };
 PLAYER_SPRITE.image.onerror=()=>{
-  console.error('Player sprite load failed. index.html과 Character _PC(2).png가 같은 폴더에 있는지 확인하세요.');
+  console.error('Player sprite load failed. index.html과 Character _PC.png가 같은 폴더에 있는지 확인하세요.');
 };
-PLAYER_SPRITE.image.src='./Character%20_PC(2).png';
+PLAYER_SPRITE.image.src='./Character%20_PC.png';
 
 const overlay=document.getElementById("overlay"),startBtn=document.getElementById("startBtn"),reviveBtn=document.getElementById("reviveBtn"),missionCloseBtn=document.getElementById("missionCloseBtn");
 const diffBtnsEl=document.getElementById("diffBtns"),diffNameEl=document.getElementById("diffName"),diffNumEl=document.getElementById("diffNum"),diffDescEl=document.getElementById("diffDesc");
