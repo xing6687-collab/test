@@ -1419,8 +1419,9 @@ const CHARACTER_VISUAL={
   upOffsetY:-6,
   bobTime:0,bobX:0,bobY:0,
   recoilBack:0,recoilSide:0,recoilAngle:0,
-  walk:{speed:8.5,x:1.0,y:2.0}, sprint:{speed:12.5,x:2.0,y:4.0},
-  bodyBackRatio:0.30,bodySideRatio:0.20
+  // 기본 이동 자체가 달리기이며, 전력질주는 더 빠르고 크게 들썩인다.
+  run:{speed:14.5,x:1.6,y:3.2}, sprint:{speed:20.0,x:2.8,y:5.5},
+  bodyBackRatio:0.18,bodySideRatio:0.14
 };
 const PLAYER_PART_ROWS={body:0,rightHand:2,leftHand:3};
 const DEFAULT_LAYER_ORDER=["body","leftHand","weapon","rightHand"];
@@ -1443,7 +1444,7 @@ function makePartConfig(type){
 }
 const PLAYER_EDITOR_WEAPON_IDS=["ar","smg","sg","sr","dmr","iar","fsmg","apr","ksg","nuke","lmg","mg","gl","at","atc","fl","rg"];
 const PLAYER_COMPOSITE_PRESET={
-  "version": 9,
+  "version": 8,
   "directions": {
     "N": {
       "layerOrder": [
@@ -1471,8 +1472,8 @@ const PLAYER_COMPOSITE_PRESET={
           "rotationOffset": 0,
           "visible": true,
           "pivot": {
-            "x": 21,
-            "y": -5
+            "x": 17,
+            "y": 0
           },
           "aimFollow": 1
         },
@@ -1511,8 +1512,8 @@ const PLAYER_COMPOSITE_PRESET={
         },
         "leftHand": {
           "position": {
-            "x": 16,
-            "y": 5
+            "x": 9,
+            "y": 9
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -1686,8 +1687,8 @@ const PLAYER_COMPOSITE_PRESET={
       "directions": {
         "N": {
           "position": {
-            "x": -40,
-            "y": 6
+            "x": -33,
+            "y": 5
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -1697,14 +1698,14 @@ const PLAYER_COMPOSITE_PRESET={
             "y": -5
           },
           "muzzle": {
-            "x": 30,
-            "y": 0
+            "x": -33,
+            "y": -19
           }
         },
         "NE": {
           "position": {
-            "x": -27,
-            "y": 24
+            "x": -18,
+            "y": 25
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -1755,7 +1756,7 @@ const PLAYER_COMPOSITE_PRESET={
         "S": {
           "position": {
             "x": -19,
-            "y": 8
+            "y": 3
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -1775,8 +1776,8 @@ const PLAYER_COMPOSITE_PRESET={
       "directions": {
         "N": {
           "position": {
-            "x": -40,
-            "y": 6
+            "x": -33,
+            "y": 5
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -1786,14 +1787,14 @@ const PLAYER_COMPOSITE_PRESET={
             "y": -5
           },
           "muzzle": {
-            "x": 30,
-            "y": 0
+            "x": -33,
+            "y": -19
           }
         },
         "NE": {
           "position": {
-            "x": -27,
-            "y": 24
+            "x": -18,
+            "y": 25
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -1844,7 +1845,7 @@ const PLAYER_COMPOSITE_PRESET={
         "S": {
           "position": {
             "x": -19,
-            "y": 8
+            "y": 3
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -1864,8 +1865,8 @@ const PLAYER_COMPOSITE_PRESET={
       "directions": {
         "N": {
           "position": {
-            "x": -40,
-            "y": 6
+            "x": -33,
+            "y": 5
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -1875,14 +1876,14 @@ const PLAYER_COMPOSITE_PRESET={
             "y": -5
           },
           "muzzle": {
-            "x": 30,
-            "y": 0
+            "x": -33,
+            "y": -19
           }
         },
         "NE": {
           "position": {
-            "x": -27,
-            "y": 24
+            "x": -18,
+            "y": 25
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -1933,7 +1934,7 @@ const PLAYER_COMPOSITE_PRESET={
         "S": {
           "position": {
             "x": -19,
-            "y": 8
+            "y": 3
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -1953,8 +1954,8 @@ const PLAYER_COMPOSITE_PRESET={
       "directions": {
         "N": {
           "position": {
-            "x": -40,
-            "y": 6
+            "x": -33,
+            "y": 5
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -1964,14 +1965,14 @@ const PLAYER_COMPOSITE_PRESET={
             "y": -5
           },
           "muzzle": {
-            "x": 30,
-            "y": 0
+            "x": -33,
+            "y": -19
           }
         },
         "NE": {
           "position": {
-            "x": -27,
-            "y": 24
+            "x": -18,
+            "y": 25
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2022,7 +2023,7 @@ const PLAYER_COMPOSITE_PRESET={
         "S": {
           "position": {
             "x": -19,
-            "y": 8
+            "y": 3
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2042,8 +2043,8 @@ const PLAYER_COMPOSITE_PRESET={
       "directions": {
         "N": {
           "position": {
-            "x": -40,
-            "y": 6
+            "x": -33,
+            "y": 5
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2053,14 +2054,14 @@ const PLAYER_COMPOSITE_PRESET={
             "y": -5
           },
           "muzzle": {
-            "x": 30,
-            "y": 0
+            "x": -33,
+            "y": -19
           }
         },
         "NE": {
           "position": {
-            "x": -27,
-            "y": 24
+            "x": -18,
+            "y": 25
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2111,7 +2112,7 @@ const PLAYER_COMPOSITE_PRESET={
         "S": {
           "position": {
             "x": -19,
-            "y": 8
+            "y": 3
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2131,8 +2132,8 @@ const PLAYER_COMPOSITE_PRESET={
       "directions": {
         "N": {
           "position": {
-            "x": -40,
-            "y": 6
+            "x": -33,
+            "y": 5
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2142,14 +2143,14 @@ const PLAYER_COMPOSITE_PRESET={
             "y": -5
           },
           "muzzle": {
-            "x": 30,
-            "y": 0
+            "x": -33,
+            "y": -19
           }
         },
         "NE": {
           "position": {
-            "x": -27,
-            "y": 24
+            "x": -18,
+            "y": 25
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2200,7 +2201,7 @@ const PLAYER_COMPOSITE_PRESET={
         "S": {
           "position": {
             "x": -19,
-            "y": 8
+            "y": 3
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2220,8 +2221,8 @@ const PLAYER_COMPOSITE_PRESET={
       "directions": {
         "N": {
           "position": {
-            "x": -40,
-            "y": 6
+            "x": -33,
+            "y": 5
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2231,14 +2232,14 @@ const PLAYER_COMPOSITE_PRESET={
             "y": -5
           },
           "muzzle": {
-            "x": 30,
-            "y": 0
+            "x": -33,
+            "y": -19
           }
         },
         "NE": {
           "position": {
-            "x": -27,
-            "y": 24
+            "x": -18,
+            "y": 25
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2289,7 +2290,7 @@ const PLAYER_COMPOSITE_PRESET={
         "S": {
           "position": {
             "x": -19,
-            "y": 8
+            "y": 3
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2309,8 +2310,8 @@ const PLAYER_COMPOSITE_PRESET={
       "directions": {
         "N": {
           "position": {
-            "x": -40,
-            "y": 6
+            "x": -33,
+            "y": 5
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2320,14 +2321,14 @@ const PLAYER_COMPOSITE_PRESET={
             "y": -5
           },
           "muzzle": {
-            "x": 30,
-            "y": 0
+            "x": -33,
+            "y": -19
           }
         },
         "NE": {
           "position": {
-            "x": -27,
-            "y": 24
+            "x": -18,
+            "y": 25
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2378,7 +2379,7 @@ const PLAYER_COMPOSITE_PRESET={
         "S": {
           "position": {
             "x": -19,
-            "y": 8
+            "y": 3
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2398,8 +2399,8 @@ const PLAYER_COMPOSITE_PRESET={
       "directions": {
         "N": {
           "position": {
-            "x": -40,
-            "y": 6
+            "x": -33,
+            "y": 5
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2409,14 +2410,14 @@ const PLAYER_COMPOSITE_PRESET={
             "y": -5
           },
           "muzzle": {
-            "x": 30,
-            "y": 0
+            "x": -33,
+            "y": -19
           }
         },
         "NE": {
           "position": {
-            "x": -27,
-            "y": 24
+            "x": -18,
+            "y": 25
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2467,7 +2468,7 @@ const PLAYER_COMPOSITE_PRESET={
         "S": {
           "position": {
             "x": -19,
-            "y": 8
+            "y": 3
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2487,8 +2488,8 @@ const PLAYER_COMPOSITE_PRESET={
       "directions": {
         "N": {
           "position": {
-            "x": -40,
-            "y": 6
+            "x": -33,
+            "y": 5
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2498,14 +2499,14 @@ const PLAYER_COMPOSITE_PRESET={
             "y": -5
           },
           "muzzle": {
-            "x": 30,
-            "y": 0
+            "x": -33,
+            "y": -19
           }
         },
         "NE": {
           "position": {
-            "x": -27,
-            "y": 24
+            "x": -18,
+            "y": 25
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2556,7 +2557,7 @@ const PLAYER_COMPOSITE_PRESET={
         "S": {
           "position": {
             "x": -19,
-            "y": 8
+            "y": 3
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2576,8 +2577,8 @@ const PLAYER_COMPOSITE_PRESET={
       "directions": {
         "N": {
           "position": {
-            "x": -40,
-            "y": 6
+            "x": -33,
+            "y": 5
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2587,14 +2588,14 @@ const PLAYER_COMPOSITE_PRESET={
             "y": -5
           },
           "muzzle": {
-            "x": 30,
-            "y": 0
+            "x": -33,
+            "y": -19
           }
         },
         "NE": {
           "position": {
-            "x": -27,
-            "y": 24
+            "x": -18,
+            "y": 25
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2645,7 +2646,7 @@ const PLAYER_COMPOSITE_PRESET={
         "S": {
           "position": {
             "x": -19,
-            "y": 8
+            "y": 3
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2665,8 +2666,8 @@ const PLAYER_COMPOSITE_PRESET={
       "directions": {
         "N": {
           "position": {
-            "x": -40,
-            "y": 6
+            "x": -33,
+            "y": 5
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2676,14 +2677,14 @@ const PLAYER_COMPOSITE_PRESET={
             "y": -5
           },
           "muzzle": {
-            "x": 30,
-            "y": 0
+            "x": -33,
+            "y": -19
           }
         },
         "NE": {
           "position": {
-            "x": -27,
-            "y": 24
+            "x": -18,
+            "y": 25
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2734,7 +2735,7 @@ const PLAYER_COMPOSITE_PRESET={
         "S": {
           "position": {
             "x": -19,
-            "y": 8
+            "y": 3
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2754,8 +2755,8 @@ const PLAYER_COMPOSITE_PRESET={
       "directions": {
         "N": {
           "position": {
-            "x": -40,
-            "y": 6
+            "x": -33,
+            "y": 5
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2765,14 +2766,14 @@ const PLAYER_COMPOSITE_PRESET={
             "y": -5
           },
           "muzzle": {
-            "x": 30,
-            "y": 0
+            "x": -33,
+            "y": -19
           }
         },
         "NE": {
           "position": {
-            "x": -27,
-            "y": 24
+            "x": -18,
+            "y": 25
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2823,7 +2824,7 @@ const PLAYER_COMPOSITE_PRESET={
         "S": {
           "position": {
             "x": -19,
-            "y": 8
+            "y": 3
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2843,8 +2844,8 @@ const PLAYER_COMPOSITE_PRESET={
       "directions": {
         "N": {
           "position": {
-            "x": -40,
-            "y": 6
+            "x": -33,
+            "y": 5
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2854,14 +2855,14 @@ const PLAYER_COMPOSITE_PRESET={
             "y": -5
           },
           "muzzle": {
-            "x": 30,
-            "y": 0
+            "x": -33,
+            "y": -19
           }
         },
         "NE": {
           "position": {
-            "x": -27,
-            "y": 24
+            "x": -18,
+            "y": 25
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2912,7 +2913,7 @@ const PLAYER_COMPOSITE_PRESET={
         "S": {
           "position": {
             "x": -19,
-            "y": 8
+            "y": 3
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2932,8 +2933,8 @@ const PLAYER_COMPOSITE_PRESET={
       "directions": {
         "N": {
           "position": {
-            "x": -40,
-            "y": 6
+            "x": -33,
+            "y": 5
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -2943,14 +2944,14 @@ const PLAYER_COMPOSITE_PRESET={
             "y": -5
           },
           "muzzle": {
-            "x": 30,
-            "y": 0
+            "x": -33,
+            "y": -19
           }
         },
         "NE": {
           "position": {
-            "x": -27,
-            "y": 24
+            "x": -18,
+            "y": 25
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -3001,7 +3002,7 @@ const PLAYER_COMPOSITE_PRESET={
         "S": {
           "position": {
             "x": -19,
-            "y": 8
+            "y": 3
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -3021,8 +3022,8 @@ const PLAYER_COMPOSITE_PRESET={
       "directions": {
         "N": {
           "position": {
-            "x": -40,
-            "y": 6
+            "x": -33,
+            "y": 5
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -3032,14 +3033,14 @@ const PLAYER_COMPOSITE_PRESET={
             "y": -5
           },
           "muzzle": {
-            "x": 30,
-            "y": 0
+            "x": -33,
+            "y": -19
           }
         },
         "NE": {
           "position": {
-            "x": -27,
-            "y": 24
+            "x": -18,
+            "y": 25
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -3090,7 +3091,7 @@ const PLAYER_COMPOSITE_PRESET={
         "S": {
           "position": {
             "x": -19,
-            "y": 8
+            "y": 3
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -3110,8 +3111,8 @@ const PLAYER_COMPOSITE_PRESET={
       "directions": {
         "N": {
           "position": {
-            "x": -40,
-            "y": 6
+            "x": -33,
+            "y": 5
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -3121,14 +3122,14 @@ const PLAYER_COMPOSITE_PRESET={
             "y": -5
           },
           "muzzle": {
-            "x": 30,
-            "y": 0
+            "x": -33,
+            "y": -19
           }
         },
         "NE": {
           "position": {
-            "x": -27,
-            "y": 24
+            "x": -18,
+            "y": 25
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -3179,7 +3180,7 @@ const PLAYER_COMPOSITE_PRESET={
         "S": {
           "position": {
             "x": -19,
-            "y": 8
+            "y": 3
           },
           "scale": 1,
           "rotationOffset": 0,
@@ -3253,23 +3254,30 @@ function exportPlayerCompositeConfigTxt(){
 }
 function addPlayerVisualRecoil(w,strengthMul=1){
   if(!w) return;
-  const back=Math.min(8,(1.3+(w.recoilV||0)*0.18)*strengthMul);
-  const side=(Math.random()*2-1)*Math.min(2.5,(w.recoilH||0)*0.12)*strengthMul;
-  CHARACTER_VISUAL.recoilBack=Math.min(10,CHARACTER_VISUAL.recoilBack+back);
-  CHARACTER_VISUAL.recoilSide=Math.max(-3,Math.min(3,CHARACTER_VISUAL.recoilSide+side));
-  CHARACTER_VISUAL.recoilAngle=Math.max(-0.07,Math.min(0.07,CHARACTER_VISUAL.recoilAngle+side*0.012));
+  // 무기와 양손이 총구 반대 방향으로 확실히 밀렸다가 복귀하도록 시각 반동을 강화한다.
+  const back=Math.min(18,(3.0+(w.recoilV||0)*0.35)*strengthMul);
+  const side=(Math.random()*2-1)*Math.min(5.0,(1.0+(w.recoilH||0)*0.22))*strengthMul;
+  CHARACTER_VISUAL.recoilBack=Math.min(24,CHARACTER_VISUAL.recoilBack+back);
+  CHARACTER_VISUAL.recoilSide=Math.max(-6,Math.min(6,CHARACTER_VISUAL.recoilSide+side));
+  CHARACTER_VISUAL.recoilAngle=Math.max(-0.14,Math.min(0.14,CHARACTER_VISUAL.recoilAngle+side*0.02));
 }
 function updateCharacterVisual(dt){
-  const b=playerSprinting?CHARACTER_VISUAL.sprint:CHARACTER_VISUAL.walk;
+  const b=playerSprinting?CHARACTER_VISUAL.sprint:CHARACTER_VISUAL.run;
   if(playerMoving){
     CHARACTER_VISUAL.bobTime+=dt*b.speed;
-    const tx=Math.sin(CHARACTER_VISUAL.bobTime*0.5)*b.x;
-    const ty=(Math.sin(CHARACTER_VISUAL.bobTime)*0.65+Math.sin(CHARACTER_VISUAL.bobTime*2)*0.35)*b.y;
-    const k=Math.min(1,dt*14); CHARACTER_VISUAL.bobX+=(tx-CHARACTER_VISUAL.bobX)*k; CHARACTER_VISUAL.bobY+=(ty-CHARACTER_VISUAL.bobY)*k;
+    // 달리기: 빠른 상하 충격 + 좌우 체중 이동. 전력질주는 주기와 진폭을 모두 키운다.
+    const tx=(Math.sin(CHARACTER_VISUAL.bobTime)*0.72+Math.sin(CHARACTER_VISUAL.bobTime*0.5)*0.28)*b.x;
+    const ty=(Math.abs(Math.sin(CHARACTER_VISUAL.bobTime))*0.78+Math.sin(CHARACTER_VISUAL.bobTime*2)*0.22)*b.y-b.y*0.42;
+    const k=Math.min(1,dt*(playerSprinting?22:19));
+    CHARACTER_VISUAL.bobX+=(tx-CHARACTER_VISUAL.bobX)*k;
+    CHARACTER_VISUAL.bobY+=(ty-CHARACTER_VISUAL.bobY)*k;
   }else{
-    const k=Math.min(1,dt*12); CHARACTER_VISUAL.bobX+=(0-CHARACTER_VISUAL.bobX)*k; CHARACTER_VISUAL.bobY+=(0-CHARACTER_VISUAL.bobY)*k;
+    const k=Math.min(1,dt*14);
+    CHARACTER_VISUAL.bobX+=(0-CHARACTER_VISUAL.bobX)*k;
+    CHARACTER_VISUAL.bobY+=(0-CHARACTER_VISUAL.bobY)*k;
   }
-  const rk=Math.min(1,dt*18);
+  // 기존보다 천천히 복귀시켜 한 발 반동도 눈에 보이게 유지한다.
+  const rk=Math.min(1,dt*11);
   CHARACTER_VISUAL.recoilBack+=(0-CHARACTER_VISUAL.recoilBack)*rk;
   CHARACTER_VISUAL.recoilSide+=(0-CHARACTER_VISUAL.recoilSide)*rk;
   CHARACTER_VISUAL.recoilAngle+=(0-CHARACTER_VISUAL.recoilAngle)*rk;
