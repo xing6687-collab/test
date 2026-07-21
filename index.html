@@ -627,8 +627,49 @@ makeObjectives();
 // 엄폐물 3종: wall=불멸 / strong=폭발물만 파괴 / weak=모든 공격에 파괴
 let COVERS=[]; let coversDirty=false;
 const FORT_S=900;
-function pushCover(x,y,w,h,type){ if(w<=2||h<=2) return; const hp = type==="weak"?30 : (type==="strong"?130:0); COVERS.push({x,y,w,h,type,hp,maxhp:hp}); }
+const LEVEL_GRID=128;
+const PROP_GRID=32;
+function snapLevelCenter(v){ return WALL+LEVEL_GRID*.5+Math.round((v-WALL-LEVEL_GRID*.5)/LEVEL_GRID)*LEVEL_GRID; }
+function snapProp(v){ return Math.round(v/PROP_GRID)*PROP_GRID; }
+function snapWallRect(x,y,w,h){
+  const horizontal=w>h,vertical=h>w;
+  if(horizontal){
+    const count=Math.max(1,Math.round(w/LEVEL_GRID));
+    return {x:snapLevelCenter(x+w*.5)-count*LEVEL_GRID*.5,y:snapLevelCenter(y+h*.5)-LEVEL_GRID*.5,w:count*LEVEL_GRID,h:LEVEL_GRID};
+  }
+  if(vertical){
+    const count=Math.max(1,Math.round(h/LEVEL_GRID));
+    return {x:snapLevelCenter(x+w*.5)-LEVEL_GRID*.5,y:snapLevelCenter(y+h*.5)-count*LEVEL_GRID*.5,w:LEVEL_GRID,h:count*LEVEL_GRID};
+  }
+  return {x:snapLevelCenter(x+w*.5)-LEVEL_GRID*.5,y:snapLevelCenter(y+h*.5)-LEVEL_GRID*.5,w:LEVEL_GRID,h:LEVEL_GRID};
+}
+let coverStructureSerial=0;
+function nextCoverStructureId(prefix='structure'){ return `${prefix}_${++coverStructureSerial}`; }
+function pushCover(x,y,w,h,type,visualWallType=null,structureId=null){
+  if(w<=2||h<=2)return;
+  // Direction must be decided from the authored rectangle before grid snapping.
+  // A short 30x88 vertical wall becomes 128x128 after snapping, so deciding
+  // direction afterward incorrectly turns it into a horizontal square tile.
+  const authoredOrientation=w>h?"horizontal":(h>w?"vertical":"square");
+  const authoredX=x,authoredY=y,authoredW=w,authoredH=h;
+  const r=snapWallRect(x,y,w,h);
+  const hp=type==="weak"?30:(type==="strong"?130:0);
+  COVERS.push({
+    x:r.x,y:r.y,w:r.w,h:r.h,type,hp,maxhp:hp,visualWallType,
+    wallOrientation:authoredOrientation,
+    authoredX,authoredY,authoredW,authoredH,
+    sourceX:r.x,sourceY:r.y,sourceW:r.w,sourceH:r.h,
+    gridAligned:true,
+    structureId
+  });
+}
+function pushCrate(x,y,r=22,extra={}){
+  crates.push({x:snapProp(x),y:snapProp(y),r,used:false,...extra,gridAligned:true});
+}
 function coverAt(x,y){ for(const c of COVERS){ if(!c.dead && x>=c.x&&x<=c.x+c.w&&y>=c.y&&y<=c.y+c.h) return c; } return null; }
+function isFenceCover(c){ return !!c && (c.wallType==="fence" || c.visualWallType==="fence"); }
+function coverBlocksProjectile(c){ return !!c && !c.dead && !isFenceCover(c); }
+function projectileCoverAt(x,y){ for(const c of COVERS){ if(coverBlocksProjectile(c)&&x>=c.x&&x<=c.x+c.w&&y>=c.y&&y<=c.y+c.h) return c; } return null; }
 function destroyCover(c){ c.dead=true; coversDirty=true; const cx=c.x+c.w/2, cy=c.y+c.h/2;
   craters.push({x:cx,y:cy,t:0.4,r:Math.max(c.w,c.h)*0.6}); sfx("crash"); shake=Math.max(shake,7);   // 굉음 + 화면 흔들림
   for(let i=0;i<8;i++){ const a=Math.random()*7,s=50+Math.random()*130; particles.push({x:cx,y:cy,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:0.5,max:0.5,r:2+Math.random()*3,color:"#8a8a8a",kind:"blood"}); } }
@@ -642,6 +683,8 @@ function buildCompound(o){
   const R = o.fort ? FORT_S : 260, th = o.fort ? 44 : 34, cells = o.fort ? 9 : 5, cw=(2*R)/cells;
   // 요새는 폐쇄적(벽 위주), 일반 미션은 개방적 병목(빈칸 많고 부서지는 엄폐물 위주)
   const gapProb = o.fort ? 0.22 : 0.46, wallP = o.fort ? 0.55 : 0.34, strongP = o.fort ? 0.78 : 0.62;
+  const boundaryVisualType = Math.random()<0.5 ? "concrete" : "fence";
+  const boundaryStructureId=nextCoverStructureId(`compound_${boundaryVisualType}`);
   const gaps=[];
   for(let side=0; side<4; side++){
     for(let i=0;i<cells;i++){
@@ -654,35 +697,45 @@ function buildCompound(o){
         continue;
       }
       const t=Math.random(), type = t<wallP?"wall" : (t<strongP?"strong":"weak");
-      if(side===0) pushCover(o.x-R+i*cw, o.y-R, cw-7, th, type);        // 북
-      else if(side===1) pushCover(o.x-R+i*cw, o.y+R-th, cw-7, th, type);// 남
-      else if(side===2) pushCover(o.x-R, o.y-R+i*cw, th, cw-7, type);   // 서
-      else pushCover(o.x+R-th, o.y-R+i*cw, th, cw-7, type);            // 동
+      if(side===0) pushCover(o.x-R+i*cw, o.y-R, cw-7, th, type, boundaryVisualType,boundaryStructureId);        // 북
+      else if(side===1) pushCover(o.x-R+i*cw, o.y+R-th, cw-7, th, type, boundaryVisualType,boundaryStructureId);// 남
+      else if(side===2) pushCover(o.x-R, o.y-R+i*cw, th, cw-7, type, boundaryVisualType,boundaryStructureId);   // 서
+      else pushCover(o.x+R-th, o.y-R+i*cw, th, cw-7, type, boundaryVisualType,boundaryStructureId);            // 동
     }
   }
   // 일부 입구 안쪽에 방향성 방어 엄폐물(대부분 부서짐) — 입구를 끼고 싸우다 뚫림
   for(const g of gaps){ if(Math.random()>0.6) continue; const ix=o.x+(g.x-o.x)*0.74, iy=o.y+(g.y-o.y)*0.74;
     const type=Math.random()<0.6?"weak":"strong";
-    if(g.side<2) pushCover(ix-44,iy-15,88,30,type); else pushCover(ix-15,iy-44,30,88,type); }
-  if(o.fort){ for(let i=0;i<8;i++){ const a=Math.random()*7,d=(o.r+100)+Math.random()*(R*0.5); pushCover(o.x+Math.cos(a)*d-30,o.y+Math.sin(a)*d-30,60,60,Math.random()<0.5?"weak":"strong"); } }
+    const defenseStructureId=nextCoverStructureId("compound_sandbag");
+    if(g.side<2) pushCover(ix-44,iy-15,88,30,type,"sandbag",defenseStructureId);
+    else pushCover(ix-15,iy-44,30,88,type,"sandbag",defenseStructureId); }
+  if(o.fort){ for(let i=0;i<8;i++){
+    const a=Math.random()*7,d=(o.r+100)+Math.random()*(R*0.5);
+    pushCover(o.x+Math.cos(a)*d-30,o.y+Math.sin(a)*d-30,60,60,Math.random()<0.5?"weak":"strong","sandbag",nextCoverStructureId("fort_sandbag"));
+  } }
   if(o.fort) depots.push({x:o.x+R*0.4,y:o.y-R*0.4,r:34,hp:380,maxhp:380,spawnCD:3});
-  crates.push({x:o.x+(Math.random()-0.5)*120, y:o.y+(o.r+70), r:22, used:false});  // 보급 상자
+  pushCrate(o.x+(Math.random()-0.5)*120,o.y+(o.r+70),22);  // 보급 상자
 }
 function clearZone(x,y,pad){ if(Math.hypot(x-START.x,y-START.y)<pad) return false; if(Math.hypot(x-EXIT.x,y-EXIT.y)<pad) return false;
   for(const o of objectives) if(Math.hypot(x-o.x,y-o.y)< (o.fort?FORT_S+200:380)) return false; return true; }
 function buildExitStrongpoint(){
   const x=EXIT.x, y=EXIT.y, f=EXIT.front, R=260, th=38;
-  if(f!=="N") pushCover(x-R,y-R,R*2,th,"strong");
-  if(f!=="S") pushCover(x-R,y+R-th,R*2,th,"strong");
-  if(f!=="W") pushCover(x-R,y-R,th,R*2,"strong");
-  if(f!=="E") pushCover(x+R-th,y-R,th,R*2,"strong");
+  const boundaryVisualType=Math.random()<0.5?"concrete":"fence";
+  const boundaryStructureId=nextCoverStructureId(`exit_${boundaryVisualType}`);
+  if(f!=="N") pushCover(x-R,y-R,R*2,th,"strong",boundaryVisualType,boundaryStructureId);
+  if(f!=="S") pushCover(x-R,y+R-th,R*2,th,"strong",boundaryVisualType,boundaryStructureId);
+  if(f!=="W") pushCover(x-R,y-R,th,R*2,"strong",boundaryVisualType,boundaryStructureId);
+  if(f!=="E") pushCover(x+R-th,y-R,th,R*2,"strong",boundaryVisualType,boundaryStructureId);
   const a=frontAngle(f), px=x+Math.cos(a)*210, py=y+Math.sin(a)*210;
+  const sandbagStructureId=nextCoverStructureId("exit_sandbag");
   if(f==="N"||f==="S"){
-    pushCover(px-170,py-18,110,36,"weak"); pushCover(px+60,py-18,110,36,"weak");
+    pushCover(px-170,py-18,110,36,"weak","sandbag",sandbagStructureId);
+    pushCover(px+60,py-18,110,36,"weak","sandbag",sandbagStructureId);
   }else{
-    pushCover(px-18,py-170,36,110,"weak"); pushCover(px-18,py+60,36,110,"weak");
+    pushCover(px-18,py-170,36,110,"weak","sandbag",sandbagStructureId);
+    pushCover(px-18,py+60,36,110,"weak","sandbag",sandbagStructureId);
   }
-  crates.push({x:x-Math.cos(a)*115,y:y-Math.sin(a)*115,r:22,used:false});
+  pushCrate(x-Math.cos(a)*115,y-Math.sin(a)*115,22);
 }
 function genCovers(){
   COVERS=[]; depots=[]; crates=[]; bushes=[]; mines=[]; water=[]; pits=[];
@@ -695,8 +748,8 @@ function genCovers(){
     if(!clearZone(cx,cy,360) || inWater(cx,cy)) continue;
     const set=biome.sets[Math.floor(Math.random()*biome.sets.length)];
     const pool=PREFABS.filter(p=>p.set===set); if(!pool.length) continue;
-    stampPrefab(pool[Math.floor(Math.random()*pool.length)], cx,cy, Math.floor(Math.random()*4), Math.random()<0.5); }
-  genBushes(); genMines();
+    stampPrefab(pool[Math.floor(Math.random()*pool.length)], snapLevelCenter(cx),snapLevelCenter(cy), Math.floor(Math.random()*4), Math.random()<0.5); }
+  genMines(); // 수풀은 TILEMAP_SYSTEM.generateNaturalObjects()에서 Tile map_obj_2.png 기반으로 생성
 }
 function genRiver(){
   const vert=Math.random()<0.5, rw=150+Math.random()*120;
@@ -1384,8 +1437,20 @@ const BIOMES=[
 let biome=BIOMES[0];
 // 엄폐물 프리팹 패턴 — 상대 중심좌표 사각형 집합. 앵커에 회전(0~3·90°)+좌우반전으로 찍어 "랜덤이지만 공략 가능"한 구조
 const PREFABS=[
-  {set:"sandbag", rects:[{x:-72,y:0,w:24,h:150,type:"strong"},{x:72,y:0,w:24,h:150,type:"strong"},{x:0,y:-74,w:170,h:24,type:"strong"}]},   // ㄷ자 진지
-  {set:"sandbag", rects:[{x:-60,y:-30,w:110,h:24,type:"strong"},{x:40,y:40,w:24,h:110,type:"weak"}]},                                          // 꺾인 엄폐
+  // Sandbag prefabs are authored directly as 128px wall cells.
+  // This avoids converting thin 24x150 rectangles into a single 128x128 square.
+  // ㄷ자 진지: upper horizontal line with three-cell vertical sides.
+  {set:"sandbag", cells:[
+    {x:-1,y:-1,type:"strong"},{x:0,y:-1,type:"strong"},{x:1,y:-1,type:"strong"},
+    {x:-1,y:0,type:"strong"},{x:1,y:0,type:"strong"},
+    {x:-1,y:1,type:"strong"},{x:1,y:1,type:"strong"}
+  ]},
+  // ㄴ자 엄폐: vertical line descends into a bottom horizontal line.
+  // The bend cell has mask up+right(3), so frame column 7(bottom-left) is selected.
+  {set:"sandbag", cells:[
+    {x:-1,y:-1,type:"weak"},{x:-1,y:0,type:"weak"},{x:-1,y:1,type:"weak"},
+    {x:0,y:1,type:"strong"},{x:1,y:1,type:"strong"}
+  ]},
   {set:"line",    rects:[{x:-95,y:0,w:120,h:26,type:"wall"},{x:95,y:0,w:120,h:26,type:"wall"}]},                                               // 중앙 통로(병목)
   {set:"line",    rects:[{x:-110,y:0,w:90,h:28,type:"wall"},{x:50,y:0,w:120,h:28,type:"strong"},{x:0,y:-80,w:30,h:60,type:"weak"}]},           // 엇갈린 벽
   {set:"rock",    rects:[{x:-55,y:-35,w:64,h:64,type:"strong"},{x:60,y:25,w:74,h:74,type:"strong"},{x:5,y:90,w:52,h:52,type:"strong"}]},        // 바위 군집
@@ -1402,9 +1467,24 @@ const PREFABS=[
     {x:0,y:-38,w:20,h:84,type:"strong"}]},
 ];
 function stampPrefab(p,ax,ay,rot,mir){
+  const structureId=nextCoverStructureId(`prefab_${p.set}`);
+  const visualWallType=p.set==="sandbag"?"sandbag":null;
+
+  if(Array.isArray(p.cells)){
+    for(const cell of p.cells){
+      let gx=cell.x*(mir?-1:1),gy=cell.y;
+      for(let i=0;i<rot;i++){const nx=-gy,ny=gx;gx=nx;gy=ny;}
+      const cx=ax+gx*LEVEL_GRID,cy=ay+gy*LEVEL_GRID;
+      // One authored wall cell. Shape is decided later only from neighbor mask.
+      pushCover(cx-LEVEL_GRID*.5,cy-LEVEL_GRID*.5,LEVEL_GRID,LEVEL_GRID,
+        cell.type||"strong",visualWallType,structureId);
+    }
+    return;
+  }
+
   for(const r of p.rects){ let x=r.x*(mir?-1:1), y=r.y, w=r.w, h=r.h;
     for(let i=0;i<rot;i++){ const nx=-y, ny=x; x=nx; y=ny; const t=w; w=h; h=t; }
-    pushCover(ax+x-w/2, ay+y-h/2, w, h, r.type); }
+    pushCover(ax+x-w/2, ay+y-h/2, w, h, r.type,visualWallType,structureId); }
 }
 let bushes=[], mines=[], water=[], pits=[], playerInBush=false;
 function inWater(x,y){ for(const w of water){ if(x>=w.x&&x<=w.x+w.w&&y>=w.y&&y<=w.y+w.h) return true; } return false; }
@@ -4602,7 +4682,7 @@ function aimImpactPoint(){   // 현재 발사하면 처음 닿을 지점. 없으
   }
   const a=player.aim, dx=Math.cos(a), dy=Math.sin(a), maxD=activeAimRange(); let best=maxD, kind="range";
   for(const e of enemies){ if(!e.alive) continue; const ex=e.x-player.x, ey=e.y-player.y, along=ex*dx+ey*dy; if(along<0||along>best) continue; const side=Math.abs(-ex*dy+ey*dx); if(side<=e.r+3){ best=Math.max(0,along-Math.sqrt(Math.max(0,(e.r+3)*(e.r+3)-side*side))); kind="enemy"; } }
-  for(const c of COVERS){ if(c.dead) continue; const t=segRayRectDist(player.x,player.y,dx,dy,best,c); if(t!=null && t<best){ best=t; kind="cover"; } }
+  for(const c of COVERS){ if(!coverBlocksProjectile(c)) continue; const t=segRayRectDist(player.x,player.y,dx,dy,best,c); if(t!=null && t<best){ best=t; kind="cover"; } }
   if(player.x+dx*best<WALL||player.x+dx*best>WORLD.w-WALL||player.y+dy*best<WALL||player.y+dy*best>WORLD.h-WALL){
     const wall={x:WALL,y:WALL,w:WORLD.w-WALL*2,h:WORLD.h-WALL*2};
     // 외벽은 박스 안쪽이라 별도 처리 대신 현재 best 유지
@@ -4631,9 +4711,9 @@ function resolveCovers(o){
       if(mn===dl) o.x=c.x-o.r; else if(mn===dr) o.x=c.x+c.w+o.r; else if(mn===dtp) o.y=c.y-o.r; else o.y=c.y+c.h+o.r; } } }
 }
 function bulletHitsCover(b){ if(b.x<WALL||b.x>WORLD.w-WALL||b.y<WALL||b.y>WORLD.h-WALL) return true;
-  for(const c of COVERS){ if(b.x>=c.x&&b.x<=c.x+c.w&&b.y>=c.y&&b.y<=c.y+c.h) return true; } return false; }
+  for(const c of COVERS){ if(coverBlocksProjectile(c)&&b.x>=c.x&&b.x<=c.x+c.w&&b.y>=c.y&&b.y<=c.y+c.h) return true; } return false; }
 function coverBetweenBase(x0,y0,x1,y1){ const n=Math.ceil(Math.hypot(x1-x0,y1-y0)/12);
-  for(let i=1;i<n;i++){ const t=i/n,x=x0+(x1-x0)*t,y=y0+(y1-y0)*t; for(const c of COVERS) if(x>=c.x&&x<=c.x+c.w&&y>=c.y&&y<=c.y+c.h) return true; } return false; }
+  for(let i=1;i<n;i++){ const t=i/n,x=x0+(x1-x0)*t,y=y0+(y1-y0)*t; for(const c of COVERS) if(coverBlocksProjectile(c)&&x>=c.x&&x<=c.x+c.w&&y>=c.y&&y<=c.y+c.h) return true; } return false; }
 
 //---------------- 사격 / 재장전 ----------------
 function startReload(w){
@@ -4840,7 +4920,7 @@ function updateScatters(dt){
 }
 function landScatter(s){
   if(s.kind==="mine"){ if(!inWater(s.x,s.y)&&!coverAt(s.x,s.y)) mines.push({x:s.x,y:s.y,r:13,trig:60,armed:true,dead:false,friendly:true}); sfx("deploy"); }
-  else { crates.push({x:s.x,y:s.y,r:15,used:false,small:true}); sfx("deploy"); }   // 보급: 소형 보급 픽업
+  else { pushCrate(s.x,s.y,15,{small:true}); sfx("deploy"); }   // 보급: 소형 보급 픽업
   for(let i=0;i<6;i++){ const a=Math.random()*7,sp=40+Math.random()*70; particles.push({x:s.x,y:s.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:0.32,max:0.32,r:2+Math.random()*3,color:"#9a8a6a",kind:"blood"}); }   // 착지 먼지
   craters.push({x:s.x,y:s.y,t:0.25,r:14});
 }
@@ -5586,7 +5666,7 @@ function spawnBouncer(x,y,ang,w){ const cs=Math.cos(ang),sn=Math.sin(ang);
 function updateBouncers(dt){
   for(const b of bouncers){
     b.vz-=b.grav*dt; b.z+=b.vz*dt; b.x+=b.vx*dt; b.y+=b.vy*dt; b.spin+=b.vspin*dt; b.ang=Math.atan2(b.vy,b.vx);
-    const oob=(b.x<WALL||b.x>WORLD.w-WALL||b.y<WALL||b.y>WORLD.h-WALL), cc=coverAt(b.x,b.y);
+    const oob=(b.x<WALL||b.x>WORLD.w-WALL||b.y<WALL||b.y>WORLD.h-WALL), cc=projectileCoverAt(b.x,b.y);
     let he=null; for(const e of enemies){ if(e.alive&&!b.hits.includes(e)&&Math.hypot(e.x-b.x,e.y-b.y)<e.r+5){ he=e; break; } }
     if(he||cc||oob){   // 충돌 — 무기 성격 그대로
       if(b.explosive){ blastAt(b.x,b.y,b.splash,b.dmg,b.pen); popText(b.x,b.y-12,"쾅!",b.color); b.dead=true; continue; }
@@ -5686,7 +5766,7 @@ function updateBullets(dt){
     if(!b.fromPlayer){ const ba=pointInBarrier(b.x,b.y); if(ba){
       ba.hp=(ba.hp==null?300:ba.hp)-(b.dmg||10); if(ba.hp<=0){ ba.life=0; boomFx(ba.x,ba.y,ba.r); pushLog("🛡️ 방탄 배리어 붕괴!","#7fd0ff"); }
       b.life=0; particles.push({x:b.x,y:b.y,vx:(Math.random()-0.5)*120,vy:(Math.random()-0.5)*120,life:0.22,max:0.22,r:3,color:ba.color,kind:"spark"}); continue; } }
-    const cc=coverAt(b.x,b.y);
+    const cc=projectileCoverAt(b.x,b.y);
     if(cc){ if(b.splash>0) explode(b); else if(b.fromPlayer && cc.type==="weak") damageCover(cc,b.dmg);  // 폭발물=광역파괴 / 일반탄=약한엄폐물만
       b.life=0; continue; }
     let hitMine=false; for(const m of mines){ if(!m.dead && Math.hypot(m.x-b.x,m.y-b.y)<m.r+3){ detonateMine(m); if(b.splash>0) explode(b); b.life=0; hitMine=true; break; } }   // 지뢰는 공격당하면 폭발
@@ -5843,10 +5923,10 @@ function drawPits(){ for(const p of pits){ if(!onScreen(p.x,p.y,p.r+40)) continu
 function drawMines(){ const bl=0.5+0.5*Math.sin(performance.now()/180); for(const m of mines){ if(m.dead||!onScreen(m.x,m.y,30)) continue; ctx.save();
   ctx.fillStyle="#3a3024"; ctx.beginPath(); ctx.arc(m.x,m.y,m.r,0,7); ctx.fill(); ctx.strokeStyle="#6a5638"; ctx.lineWidth=2; ctx.stroke();
   ctx.globalAlpha=0.6+0.4*bl; ctx.fillStyle="#ff3030"; ctx.beginPath(); ctx.arc(m.x,m.y,3,0,7); ctx.fill(); ctx.restore(); } }
-function drawBushes(){ for(const bu of bushes){ if(!onScreen(bu.x,bu.y,bu.r+10)) continue; ctx.save();
-  const inside = (player.x-bu.x)**2+(player.y-bu.y)**2 < bu.r*bu.r;
-  ctx.globalAlpha=inside?0.5:0.72; ctx.fillStyle="#2f5a2a"; ctx.beginPath(); ctx.arc(bu.x,bu.y,bu.r,0,7); ctx.fill();
-  ctx.globalAlpha=inside?0.35:0.55; ctx.fillStyle="#3f7a36"; for(let i=0;i<4;i++){ const a=i*1.7+bu.x*0.01; ctx.beginPath(); ctx.arc(bu.x+Math.cos(a)*bu.r*0.4,bu.y+Math.sin(a)*bu.r*0.4,bu.r*0.5,0,7); ctx.fill(); } ctx.restore(); } }
+function drawBushes(){
+  if(typeof TILEMAP_SYSTEM!=="undefined"&&TILEMAP_SYSTEM.drawNaturalBushes){TILEMAP_SYSTEM.drawNaturalBushes(ctx);return;}
+  for(const bu of bushes){if(!onScreen(bu.x,bu.y,bu.r+10))continue;ctx.save();const inside=(player.x-bu.x)**2+(player.y-bu.y)**2<bu.r*bu.r;ctx.globalAlpha=inside?.5:.72;ctx.fillStyle="#2f5a2a";ctx.beginPath();ctx.arc(bu.x,bu.y,bu.r,0,7);ctx.fill();ctx.restore();}
+}
 function updateBooms(dt){ for(const b of booms) b.t+=dt; booms=booms.filter(b=>b.t<b.dur); }
 function drawBooms(){ for(const b of booms){ const p=b.t/b.dur; const cr=Math.max(0.5,b.r*(0.55+p*0.55)); ctx.save();
   ctx.globalAlpha=Math.max(0,1-p); const g=ctx.createRadialGradient(b.x,b.y,0,b.x,b.y,cr);
@@ -6325,6 +6405,41 @@ function doRevive(){
 //==================================================================
 function updateCamera(){ const z=camZoom(); cam.x=Math.max(0,Math.min(WORLD.w-W/z,player.x-(W/2)/z)); cam.y=Math.max(0,Math.min(WORLD.h-H/z,player.y-(H/2)/z));
   if(WORLD.w<W) cam.x=(WORLD.w-W)/2; if(WORLD.h<H) cam.y=(WORLD.h-H)/2; }
+function drawDepthSortedWorld(){
+  const queue=[];
+  const add=(y,order,draw)=>queue.push({y:Number.isFinite(y)?y:0,order,draw});
+
+  for(const o of objectives) add(o.y+(o.r||0)*.45,10,()=>drawObjective(o));
+  for(const dp of depots) add(dp.y+18,12,()=>drawDepot(dp));
+  for(const c of crates) add(c.y+18,14,()=>drawCrate(c));
+
+  for(const c of COVERS){
+    if(c.dead||c.wallCollisionOnly||!onScreen(c.x+c.w*.5,c.y+c.h*.5,Math.max(c.w,c.h)))continue;
+    const y=(typeof TILEMAP_SYSTEM!=="undefined"&&TILEMAP_SYSTEM.coverDepthY)?TILEMAP_SYSTEM.coverDepthY(c):c.y+c.h;
+    add(y,20,()=>TILEMAP_SYSTEM.drawCover(ctx,c));
+  }
+
+  if(typeof TILEMAP_SYSTEM!=="undefined"&&TILEMAP_SYSTEM.appendNaturalDepthEntries){
+    TILEMAP_SYSTEM.appendNaturalDepthEntries(queue);
+  }else{
+    for(const bu of bushes){
+      if(!onScreen(bu.x,bu.y,bu.r+10))continue;
+      add(bu.y+bu.r,35,()=>{
+        ctx.save();
+        const inside=(player.x-bu.x)**2+(player.y-bu.y)**2<bu.r*bu.r;
+        ctx.globalAlpha=inside?.5:.72;ctx.fillStyle="#2f5a2a";
+        ctx.beginPath();ctx.arc(bu.x,bu.y,bu.r,0,7);ctx.fill();ctx.restore();
+      });
+    }
+  }
+
+  for(const tr of turrets) add(tr.y+18,40,()=>drawTurret(tr));
+  for(const e of enemies) if(e.alive) add(e.y+(e.r||0),45,()=>drawEnemy(e));
+  add(player.y+player.r,50,()=>drawPlayer());
+
+  queue.sort((a,b)=>(a.y-b.y)||(a.order-b.order));
+  for(const item of queue)item.draw();
+}
 function render(){
   ctx.fillStyle="#0c0c10"; ctx.fillRect(0,0,W,H);
   ctx.save(); const _z=camZoom(); ctx.translate((Math.random()-0.5)*shake,(Math.random()-0.5)*shake); ctx.scale(_z,_z); ctx.translate(-cam.x,-cam.y);   // 줌 + 화면 흔들림
@@ -6346,15 +6461,9 @@ function render(){
   drawDebris();     // 바닥에 버려진 장비
   drawGraves();     // 묘비
 
-  for(const o of objectives) drawObjective(o);
-  for(const dp of depots) drawDepot(dp);
-  for(const c of crates) drawCrate(c);
   drawScatters();   // 살포 포탑 투하물(비행 중)
   drawExit();
-
-  for(const c of COVERS){ if(c.dead||!onScreen(c.x+c.w/2,c.y+c.h/2,Math.max(c.w,c.h))) continue;
-    if(typeof TILEMAP_SYSTEM!=="undefined") TILEMAP_SYSTEM.drawCover(ctx,c);
-  }
+  drawDepthSortedWorld();
 
   for(const f of firePatches) drawFirePatch(f);
   drawSupportFields();
@@ -6365,14 +6474,11 @@ function render(){
     ctx.globalAlpha=1; ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(b.x,b.y,b.fromPlayer?2.4:3,0,7); ctx.fill();
     // 탄두 장갑 등급 도넛 테두리는 제거: 총알/탄환처럼 보이도록 트레이서 색상만 유지한다.
     ctx.restore(); }
-  for(const tr of turrets) drawTurret(tr);
-  for(const e of enemies){ if(e.alive) drawEnemy(e); }
   for(const m of missiles) drawMissile(m);
   for(const g of grenades) drawGrenade(g);
   for(const b of beaconThrows) drawBeacon(b);
   for(const p of pods) drawPod(p);
   if(firing && !buyOpen && slots[activeSlot].type==="gun"){ const fw=activeGun(); if(fw&&fw.flame) drawFlameCone(fw); }
-  drawPlayer();
   for(const s of dropships) drawDropship(s);
   if(flare) drawFlare(flare);
   for(const b of bombardments) drawBombMarker(b);
@@ -6392,7 +6498,6 @@ function render(){
   drawThrowGhost();   // 투척 조준 고스트(월드)
   drawAimImpactUI();  // 현재 발사/투척 예상 명중 지점 도넛 UI
   drawPops();         // 의성어 팝업
-  drawBushes();   // 수풀 캐노피(엔티티 위 — 은폐)
   drawDynamicLightsWorld(); // 2D 가짜 다이나믹 라이트: 총구/폭발/화염이 실제로 화면을 밝히는 느낌
   ctx.restore();
   drawExposureFlashScreen(); // 강한 폭발/레일건 순간 노출 플래시
@@ -7001,7 +7106,7 @@ function drawPlayerLegacy(){
     return;
   }
   // 체력/SP 바
-  const bw=36, bx=player.x-bw/2, by=player.y-player.r-18;
+  const bw=36, bx=player.x-bw/2, by=player.y-player.r-34;
   ctx.fillStyle="#400"; ctx.fillRect(bx,by,bw,4); ctx.fillStyle="#ff4d4d"; ctx.fillRect(bx,by,bw*Math.max(0,player.hp/100),4);
   ctx.fillStyle="#023"; ctx.fillRect(bx,by+5,bw,3); ctx.fillStyle=(player.sp>0?"#3ac0ff":"#888"); ctx.fillRect(bx,by+5,bw*Math.max(0,player.sp/player.spMax),3);
   if(player.healing){   // 메디킷 시전 프로그레스바
@@ -7224,10 +7329,17 @@ function drawPlayer(){
     drawSheetCell(CHARACTER_SPRITE,row,st.col,{pivotWorld:{x:bodyX,y:bodyY},position:bodyPosition,flip:st.flip,rotation:po.rotationOffset,scale:po.scale});
   };
   if(player.dead){ctx.save();ctx.globalAlpha=.88;drawPart("body");drawPart("head");ctx.restore();const t=performance.now()/260;ctx.save();ctx.globalAlpha=.5+.25*Math.sin(t);ctx.fillStyle="#d8f5ff";ctx.font="22px sans-serif";ctx.textAlign="center";ctx.fillText("☠",player.x,player.y-player.r-25-Math.sin(t)*4);ctx.restore();return;}
-  const bw=42,bx=player.x-bw/2,by=player.y-48;ctx.fillStyle="#400";ctx.fillRect(bx,by,bw,4);ctx.fillStyle="#ff4d4d";ctx.fillRect(bx,by,bw*Math.max(0,player.hp/100),4);ctx.fillStyle="#023";ctx.fillRect(bx,by+5,bw,3);ctx.fillStyle=(player.sp>0?"#3ac0ff":"#888");ctx.fillRect(bx,by+5,bw*Math.max(0,player.sp/player.spMax),3);
-  if(player.healing){const cw=46,cx=player.x-cw/2,cy=by-12,pr=Math.max(0,Math.min(1,1-player.healT/player.healDur));ctx.fillStyle="rgba(0,0,0,.6)";ctx.fillRect(cx-1,cy-1,cw+2,7);ctx.fillStyle="#0a3";ctx.fillRect(cx,cy,cw,5);ctx.fillStyle="#5dff9b";ctx.fillRect(cx,cy,cw*pr,5);ctx.fillStyle="#dffded";ctx.font="10px sans-serif";ctx.textAlign="center";ctx.textBaseline="bottom";ctx.fillText("💉 회복 중...",player.x,cy-2);}
+
   const ar=activeAimRange();ctx.strokeStyle="rgba(255,255,255,.12)";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(player.x,player.y);ctx.lineTo(player.x+Math.cos(player.aim)*ar,player.y+Math.sin(player.aim)*ar);ctx.stroke();
   for(const part of d.layerOrder) drawPart(part);
+  // HP/SP 게이지는 캐릭터 파츠보다 나중에, 머리 위 충분한 간격을 두고 표시한다.
+  const bw=46,bx=player.x-bw/2,by=player.y-82;
+  ctx.save();
+  ctx.fillStyle="rgba(0,0,0,.78)";ctx.fillRect(bx-2,by-2,bw+4,13);
+  ctx.fillStyle="#400";ctx.fillRect(bx,by,bw,5);ctx.fillStyle="#ff4d4d";ctx.fillRect(bx,by,bw*Math.max(0,player.hp/100),5);
+  ctx.fillStyle="#023";ctx.fillRect(bx,by+7,bw,3);ctx.fillStyle=(player.sp>0?"#3ac0ff":"#888");ctx.fillRect(bx,by+7,bw*Math.max(0,player.sp/player.spMax),3);
+  if(player.healing){const cw=48,cx=player.x-cw/2,cy=by-14,pr=Math.max(0,Math.min(1,1-player.healT/player.healDur));ctx.fillStyle="rgba(0,0,0,.72)";ctx.fillRect(cx-1,cy-1,cw+2,7);ctx.fillStyle="#0a3";ctx.fillRect(cx,cy,cw,5);ctx.fillStyle="#5dff9b";ctx.fillRect(cx,cy,cw*pr,5);ctx.fillStyle="#dffded";ctx.font="10px sans-serif";ctx.textAlign="center";ctx.textBaseline="bottom";ctx.fillText("💉 회복 중...",player.x,cy-2);}
+  ctx.restore();
   if(player.exhausted){ctx.fillStyle="#cfe";ctx.font="12px sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("💦",player.x+12,player.y-35);}
   if(heldBeacon>=0){ctx.save();ctx.translate(weaponPivotWorld.x,weaponPivotWorld.y);ctx.rotate(player.aim);ctx.fillStyle=beacons[heldBeacon].color;ctx.beginPath();ctx.arc(22,0,6,0,7);ctx.fill();ctx.strokeStyle="#fff";ctx.lineWidth=1.5;ctx.stroke();ctx.restore();}
   drawSpriteMuzzleAndCharge(st,weaponPivotWorld,rotation);drawCompositeEditorPoints(st,bodyX,bodyY,weaponPivotWorld,rotation);
@@ -9250,24 +9362,26 @@ if(typeof pickArmoredVariant === "function"){
 const TILEMAP_SYSTEM = (()=>{
   const GROUND_SOURCE_SIZE=256;
   const GROUND_DRAW_SIZE=128;
-  const MAP_GRID_SIZE=32;
+  const MAP_GRID_SIZE=128; // 담은 지형 1셀(128px) 단위로 배치한다
   const CHUNK_GROUND_TILES=8;
   const TILE=GROUND_DRAW_SIZE, WALL_TILE=MAP_GRID_SIZE, SRC=GROUND_SOURCE_SIZE, SHEET_COLS=8, SHEET_ROWS=8, CHUNK=CHUNK_GROUND_TILES, CACHE_LIMIT=24;
+  const WALL_DRAW_SIZE=128, WALL_NATIVE_STEP_X=128, WALL_NATIVE_STEP_Y=128;
   const X0=WALL, Y0=WALL;
   const COLS=Math.ceil((WORLD.w-WALL*2)/TILE);
   const ROWS=Math.ceil((WORLD.h-WALL*2)/TILE);
   const WALL_COLS=Math.ceil((WORLD.w-WALL*2)/WALL_TILE);
   const WALL_ROWS=Math.ceil((WORLD.h-WALL*2)/WALL_TILE);
-  const MATERIAL={ GRASS:0, DIRT:1, CONCRETE:2, WATER:3 };
-  const MATERIAL_NAME=['grass','dirt','concrete','water'];
+  const MATERIAL={ GRASS:0, DIRT:1, ASPHALT:2, CONCRETE:2, WATER:3 };
+  const MATERIAL_NAME=['grass','dirt','asphalt','water'];
   const PRIORITY=[0,1,2,3];
-  const ROW_BY_MATERIAL=[0,1,2,3]; // grass, dirt, concrete, water
+  const ROW_BY_MATERIAL=[0,1,2,3]; // grass, dirt, asphalt, water
   // Each material row contains two continuous 4-cell patterns: A=columns 0..3, B=columns 4..7.
-  const worldSheet=new Image(), objectSheet=new Image();
-  worldSheet.decoding='async'; objectSheet.decoding='async';
-  let worldLoaded=false, objectLoaded=false, ready=false;
+  const worldSheet=new Image(), objectSheet=new Image(), objectSheet2=new Image();
+  worldSheet.decoding='async'; objectSheet.decoding='async'; objectSheet2.decoding='async';
+  let worldLoaded=false, objectLoaded=false, object2Loaded=false, ready=false;
   let seed=(Date.now()>>>0), rng=null;
-  let ground=[], region=[], regionMeta=new Map(), wallGrid=new Set();
+  let ground=[], region=[], regionMeta=new Map(), wallGrid=new Set(), wallTypeGrid=new Map();
+  let bridgePlans=[], mountainPlans=[];
   let chunkCache=new Map(), chunkTick=0;
   let debug={grid:false,nav:false,transition:false,wallMask:false};
 
@@ -9283,6 +9397,7 @@ const TILEMAP_SYSTEM = (()=>{
   }
   loadFallback(worldSheet,['Tile map_world.png'],ok=>{ worldLoaded=ok; ready=worldLoaded; invalidate(); });
   loadFallback(objectSheet,['Tile map_obj.png'],ok=>{ objectLoaded=ok; invalidate(); });
+  loadFallback(objectSheet2,['Tile map_obj_2.png'],ok=>{ object2Loaded=ok; invalidate(); });
 
   function mulberry32(a){ return function(){ let t=a+=0x6D2B79F5; t=Math.imul(t^t>>>15,t|1); t^=t+Math.imul(t^t>>>7,t|61); return ((t^t>>>14)>>>0)/4294967296; }; }
   function hash(x,y,s=seed){ let h=(x*374761393+y*668265263+s*69069)|0; h=Math.imul(h^(h>>>13),1274126177); return (h^(h>>>16))>>>0; }
@@ -9297,6 +9412,119 @@ const TILEMAP_SYSTEM = (()=>{
   function wallMaterial(x,y){ const p=wallCenter(x,y), c=cellFromWorld(p.x,p.y); return materialAtCell(c.x,c.y); }
   function key(x,y){ return `${x},${y}`; }
   function invalidate(){ chunkCache.clear(); }
+
+  // Tile map_obj_2.png: 8x8 atlas, 256px source cells. Large natural props may span multiple cells.
+  // Fixed atlas contract. Do not repack without updating this table and the Development Bible.
+  const NATURAL_FRAMES={
+    // Tile map_obj_2.png는 8x8 셀 계약을 그대로 사용한다. 여러 칸 오브젝트도 시작 셀과 점유 셀 수로 자른다.
+    rockTall:{col:0,row:0,cols:2,rows:2,kind:'rock',scale:.72,collision:[.18,.52,.64,.40]},
+    rockFlat:{col:2,row:0,cols:3,rows:2,kind:'rock',scale:.66,collision:[.10,.58,.80,.30]},
+    bushSmallA:{col:5,row:0,cols:1,rows:1,kind:'bush',scale:.72,radius:.34},
+    bushLarge:{col:6,row:0,cols:2,rows:2,kind:'bush',scale:.62,radius:.38},
+    bushSmallB:{col:5,row:1,cols:1,rows:1,kind:'bush',scale:.72,radius:.34},
+    rockCluster:{col:0,row:2,cols:3,rows:2,kind:'rock',scale:.64,collision:[.10,.56,.80,.34]},
+    rockLong:{col:3,row:2,cols:2,rows:2,kind:'rock',scale:.68,collision:[.12,.58,.76,.30]},
+    bushWide:{col:5,row:2,cols:3,rows:2,kind:'bush',scale:.62,radius:.40},
+    rockClusterBig:{col:0,row:4,cols:3,rows:3,kind:'rock',scale:.62,collision:[.12,.55,.76,.36]},
+    rockPillar:{col:3,row:4,cols:2,rows:3,kind:'rock',scale:.62,collision:[.22,.56,.56,.34]},
+    bushCluster:{col:5,row:4,cols:3,rows:2,kind:'bush',scale:.62,radius:.40},
+    bushThorn:{col:5,row:6,cols:2,rows:2,kind:'bush',scale:.66,radius:.38}
+  };
+  let naturalObjects=[];
+  function naturalFrame(name){return NATURAL_FRAMES[name];}
+  function naturalSourceRect(f){
+    const cw=(objectSheet2.naturalWidth||2048)/8, ch=(objectSheet2.naturalHeight||2048)/8;
+    return {sx:f.col*cw,sy:f.row*ch,sw:f.cols*cw,sh:f.rows*ch};
+  }
+  function naturalDrawSize(f){return {w:f.cols*TILE*f.scale,h:f.rows*TILE*f.scale};}
+  function naturalClear(x,y,pad){
+    if(Math.hypot(x-START.x,y-START.y)<pad||Math.hypot(x-EXIT.x,y-EXIT.y)<pad)return false;
+    for(const o of objectives)if(Math.hypot(x-o.x,y-o.y)<(o.fort?FORT_S+260:430))return false;
+    return !isWaterWorld(x,y);
+  }
+  function addNatural(name,x,y){
+    const f=naturalFrame(name); if(!f)return;
+    const d=naturalDrawSize(f);
+    naturalObjects.push({
+      name,x,y,w:d.w,h:d.h,kind:f.kind,
+      radius:Math.min(d.w,d.h)*(f.radius||.3),
+      placementGrid:f.kind==='rock'&&mountainPlans.some(p=>p.cells.some(c=>Math.abs(worldCenter(c.x,c.y).x-x)<TILE&&Math.abs(worldCenter(c.x,c.y).y-y)<TILE))?LEVEL_GRID:16
+    });
+    if(f.kind==='rock'){
+      const c=f.collision||[.15,.55,.7,.34];
+      COVERS.push({x:x-d.w*.5+d.w*c[0],y:y-d.h*.5+d.h*c[1],w:d.w*c[2],h:d.h*c[3],type:'wall',hp:0,maxhp:0,naturalRock:true,naturalName:name,visualCenterX:x,visualCenterY:y,visualW:d.w,visualH:d.h});
+    }else{
+      bushes.push({x,y,r:Math.max(28,Math.min(92,Math.min(d.w,d.h)*(f.radius||.34))),naturalName:name});
+    }
+  }
+  function generateMountainObjects(){
+    const mountainNames=['rockClusterBig','rockPillar','rockCluster','rockLong'];
+    for(const plan of mountainPlans){
+      for(let i=0;i<plan.cells.length;i++){
+        const c=plan.cells[i],p=worldCenter(c.x,c.y);
+        if(!naturalClear(p.x,p.y,220)||coverAt(p.x,p.y))continue;
+        const name=mountainNames[(i+hash(c.x,c.y))%mountainNames.length];
+        addNatural(name,p.x+(rng()-.5)*16,p.y+(rng()-.5)*16);
+      }
+      // Add a few shoulder rocks near the pass without closing it.
+      const gp=worldCenter(plan.gapCell.x,plan.gapCell.y);
+      const side=2.2*TILE;
+      for(const sign of [-1,1]){
+        const x=gp.x+sign*side,y=gp.y+(rng()-.5)*16;
+        if(naturalClear(x,y,220)&&!coverAt(x,y))addNatural('rockTall',x,y);
+      }
+    }
+  }
+  function generateNaturalObjects(){
+    naturalObjects=[];
+    generateMountainObjects();
+    const bushNames=['bushSmallA','bushSmallB','bushLarge','bushWide','bushCluster','bushThorn'];
+    const rockNames=['rockTall','rockFlat','rockCluster','rockLong','rockClusterBig','rockPillar'];
+    const area=WORLD.w*WORLD.h;
+    const bushCount=Math.min(46,Math.max(12,Math.round(area/2200000*Math.max(.35,biome.bush))));
+    for(let i=0;i<bushCount;i++){
+      const x=Math.round((WALL+180+rng()*(WORLD.w-WALL*2-360))/16)*16,y=Math.round((WALL+180+rng()*(WORLD.h-WALL*2-360))/16)*16;
+      if(!naturalClear(x,y,260)||coverAt(x,y))continue;
+      addNatural(bushNames[Math.floor(rng()*bushNames.length)],x,y);
+    }
+    // Rocky hills: several large clusters placed away from critical routes and mission compounds.
+    const hillCount=Math.min(8,Math.max(3,Math.round(area/8500000)));
+    for(let i=0;i<hillCount;i++){
+      const x=Math.round((WALL+420+rng()*(WORLD.w-WALL*2-840))/16)*16,y=Math.round((WALL+420+rng()*(WORLD.h-WALL*2-840))/16)*16;
+      if(!naturalClear(x,y,560)||coverAt(x,y))continue;
+      const main=rng()<.55?'rockClusterBig':'rockPillar'; addNatural(main,x,y);
+      const satellites=1+Math.floor(rng()*3);
+      for(let j=0;j<satellites;j++){
+        const a=rng()*Math.PI*2,d=170+rng()*180,n=rockNames[Math.floor(rng()*4)];
+        const sx=x+Math.cos(a)*d,sy=y+Math.sin(a)*d;
+        if(naturalClear(sx,sy,360)&&!coverAt(sx,sy))addNatural(n,sx,sy);
+      }
+    }
+  }
+  function drawNaturalObject(g,o,alpha=1){
+    if(!object2Loaded)return false; const f=naturalFrame(o.name); if(!f)return false;
+    const s=naturalSourceRect(f),d=naturalDrawSize(f);
+    g.save();g.globalAlpha=alpha;g.imageSmoothingEnabled=true;
+    g.drawImage(objectSheet2,s.sx,s.sy,s.sw,s.sh,Math.round(o.x-d.w*.5),Math.round(o.y-d.h*.5),d.w,d.h);g.restore();return true;
+  }
+  function drawNaturalBushes(g){
+    for(const o of naturalObjects){if(o.kind!=='bush'||!onScreen(o.x,o.y,Math.max(o.w,o.h)))continue;
+      const inside=(player.x-o.x)**2+(player.y-o.y)**2<(o.radius||40)**2;drawNaturalObject(g,o,inside?.48:.88);}
+  }
+  function appendNaturalDepthEntries(queue){
+    for(const o of naturalObjects){
+      if(o.kind!=='bush'||!onScreen(o.x,o.y,Math.max(o.w,o.h)))continue;
+      queue.push({
+        y:o.y+o.h*.5,
+        order:35,
+        draw:()=>{
+          const inside=(player.x-o.x)**2+(player.y-o.y)**2<(o.radius||40)**2;
+          drawNaturalObject(ctx,o,inside?.48:.88);
+        }
+      });
+    }
+  }
+
 
   function fill(mat){ ground=new Uint8Array(COLS*ROWS); ground.fill(mat); region=new Int32Array(COLS*ROWS); region.fill(-1); }
   function stampBlob(cx,cy,rx,ry,mat,rough=.24){
@@ -9338,6 +9566,74 @@ const TILEMAP_SYSTEM = (()=>{
   }
   function pointCell(p){ const c=cellFromWorld(p.x,p.y); return {x:Math.max(1,Math.min(COLS-2,c.x)),y:Math.max(1,Math.min(ROWS-2,c.y))}; }
   function keyCells(){ return [pointCell(START),pointCell(EXIT),...objectives.map(pointCell)]; }
+  function lineCells(a,b){
+    const out=[],n=Math.max(1,Math.ceil(Math.hypot(b.x-a.x,b.y-a.y)*2));
+    let last='';
+    for(let i=0;i<=n;i++){
+      const t=i/n,x=Math.round(a.x+(b.x-a.x)*t),y=Math.round(a.y+(b.y-a.y)*t),k=key(x,y);
+      if(valid(x,y)&&k!==last){out.push({x,y});last=k;}
+    }
+    return out;
+  }
+  function buildBridgePlans(){
+    bridgePlans=[];
+    const pts=keyCells();
+    const ordered=[pts[0],...pts.slice(2),pts[1]];
+    for(let i=0;i<ordered.length-1;i++){
+      const a=ordered[i],b=ordered[i+1],cells=lineCells(a,b);
+      let run=[];
+      const flush=()=>{
+        if(run.length){
+          const first=run[0],last=run[run.length-1];
+          const dx=last.x-first.x,dy=last.y-first.y;
+          const horizontal=Math.abs(dx)>=Math.abs(dy);
+          bridgePlans.push({cells:run.slice(),horizontal});
+          run=[];
+        }
+      };
+      for(const c of cells){
+        if(materialAtCell(c.x,c.y)===MATERIAL.WATER)run.push(c);
+        else flush();
+      }
+      flush();
+    }
+    // Paint asphalt over each water crossing, including short land approaches.
+    for(const p of bridgePlans){
+      if(!p.cells.length)continue;
+      const first=p.cells[0],last=p.cells[p.cells.length-1];
+      const ext=lineCells(
+        {x:first.x+(p.horizontal?-2:0),y:first.y+(p.horizontal?0:-2)},
+        {x:last.x+(p.horizontal?2:0),y:last.y+(p.horizontal?0:2)}
+      );
+      p.deck=[];
+      for(const c of ext){
+        paintDisk(c.x,c.y,1,MATERIAL.ASPHALT);
+        p.deck.push(c);
+      }
+    }
+  }
+  function buildMountainPlans(){
+    mountainPlans=[];
+    const pts=[pointCell(START),...objectives.map(pointCell),pointCell(EXIT)];
+    for(let i=0;i<pts.length-1;i++){
+      const a=pts[i],b=pts[i+1];
+      const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy);
+      if(len<9)continue;
+      const t=.38+rng()*.24;
+      const mx=a.x+dx*t,my=a.y+dy*t;
+      const nx=-dy/len,ny=dx/len;
+      const half=Math.min(7,Math.max(4,Math.floor(len*.28)));
+      const gap=1+(rng()<.55?1:0);
+      const gapOffset=Math.floor((rng()-.5)*Math.max(1,half-gap-1));
+      const cells=[];
+      for(let s=-half;s<=half;s++){
+        if(Math.abs(s-gapOffset)<=gap)continue;
+        const x=Math.round(mx+nx*s),y=Math.round(my+ny*s);
+        if(valid(x,y))cells.push({x,y});
+      }
+      if(cells.length>=5)mountainPlans.push({cells,gapCell:{x:Math.round(mx+nx*gapOffset),y:Math.round(my+ny*gapOffset)}});
+    }
+  }
   function protectCriticalAreas(){
     const pts=keyCells();
     for(const p of pts) paintDisk(p.x,p.y,1,MATERIAL.GRASS);
@@ -9365,8 +9661,14 @@ const TILEMAP_SYSTEM = (()=>{
     const dirtN=5+Math.floor(rng()*4), waterN=1+Math.floor(rng()*2);
     const rx=()=>4+rng()*Math.max(3,COLS*0.14), ry=()=>3+rng()*Math.max(3,ROWS*0.14);
     for(let i=0;i<dirtN;i++) stampBlob(3+rng()*Math.max(1,COLS-6),3+rng()*Math.max(1,ROWS-6),rx(),ry(),MATERIAL.DIRT,.27);
-    for(let i=0;i<waterN;i++) stampBlob(3+rng()*Math.max(1,COLS-6),3+rng()*Math.max(1,ROWS-6),2+rng()*Math.max(2,COLS*0.08),2+rng()*Math.max(2,ROWS*0.08),MATERIAL.WATER,.22);
-    majoritySmooth(2); protectCriticalAreas(); labelRegions(); invalidate();
+    for(let i=0;i<waterN;i++) stampBlob(3+rng()*Math.max(1,COLS-6),3+rng()*Math.max(2,ROWS-6),2+rng()*Math.max(2,COLS*0.08),2+rng()*Math.max(2,ROWS*0.08),MATERIAL.WATER,.22);
+    majoritySmooth(2);
+    buildBridgePlans();
+    buildMountainPlans();
+    protectCriticalAreas();
+    // Critical-area protection must not erase the asphalt bridge deck.
+    for(const p of bridgePlans)for(const c of p.deck||[])paintDisk(c.x,c.y,1,MATERIAL.ASPHALT);
+    labelRegions(); invalidate();
   }
 
   function frameForCell(x,y,matOverride=null,regionOverride=null){
@@ -9386,37 +9688,60 @@ const TILEMAP_SYSTEM = (()=>{
     const f=frameForCell(x,y,matOverride,ridOverride);
     g.drawImage(worldSheet,f.sx,f.sy,SRC,SRC,dx,dy,TILE,TILE);
   }
-  function edgeNoise(edgeId,i){ return Math.round(TILE*0.055)+(hash(edgeId,i)%Math.max(2,Math.round(TILE*0.045))); }
-  function clipTransition(g,dir,edgeId){
-    const steps=6; g.beginPath();
-    if(dir===0){ g.moveTo(0,0);g.lineTo(TILE,0); for(let i=steps;i>=0;i--){ const x=i*TILE/steps;g.lineTo(x,edgeNoise(edgeId,i)); } }
-    else if(dir===1){ g.moveTo(TILE,0);g.lineTo(TILE,TILE); for(let i=steps;i>=0;i--){ const y=i*TILE/steps;g.lineTo(TILE-edgeNoise(edgeId,i),y); } }
-    else if(dir===2){ g.moveTo(TILE,TILE);g.lineTo(0,TILE); for(let i=0;i<=steps;i++){ const x=i*TILE/steps;g.lineTo(x,TILE-edgeNoise(edgeId,i)); } }
-    else { g.moveTo(0,TILE);g.lineTo(0,0); for(let i=0;i<=steps;i++){ const y=i*TILE/steps;g.lineTo(edgeNoise(edgeId,i),y); } }
-    g.closePath();g.clip();
+  // Continuous terrain blending across the entire chunk.
+  // A global bilinear material field is sampled from cell centers, so adjacent cells/chunks share
+  // the same boundary and never produce isolated square/triangle patches.
+  const terrainLayerCanvas=document.createElement('canvas');
+  const terrainMaskCanvas=document.createElement('canvas');
+  terrainLayerCanvas.width=terrainMaskCanvas.width=CHUNK*TILE;
+  terrainLayerCanvas.height=terrainMaskCanvas.height=CHUNK*TILE;
+  const terrainLayerCtx=terrainLayerCanvas.getContext('2d');
+  const terrainMaskCtx=terrainMaskCanvas.getContext('2d',{willReadFrequently:true});
+  function smoothStep(a,b,v){const t=Math.max(0,Math.min(1,(v-a)/(b-a)));return t*t*(3-2*t);}
+  function materialFieldAt(worldGX,worldGY,thresholdMat){
+    // Grid values live at tile centers. Interpolating the four nearest centers creates a continuous curve.
+    const gx=worldGX-.5,gy=worldGY-.5;
+    const x0=Math.floor(gx),y0=Math.floor(gy),fx=gx-x0,fy=gy-y0;
+    const v=(x,y)=>PRIORITY[materialAtCell(x,y)]>=PRIORITY[thresholdMat]?1:0;
+    const v00=v(x0,y0),v10=v(x0+1,y0),v01=v(x0,y0+1),v11=v(x0+1,y0+1);
+    const top=v00+(v10-v00)*fx,bot=v01+(v11-v01)*fx;
+    return top+(bot-top)*fy;
   }
-  function drawTransitions(g,x,y,dx,dy){
-    const here=materialAtCell(x,y), dirs=[[0,-1],[1,0],[0,1],[-1,0]];
-    for(let d=0;d<4;d++){
-      const nx=x+dirs[d][0],ny=y+dirs[d][1]; if(!valid(nx,ny)) continue;
-      const there=materialAtCell(nx,ny); if(there===here||PRIORITY[there]<=PRIORITY[here]) continue;
-      const edgeId=hash(Math.min(x,nx)*31+Math.min(y,ny),d%2,seed);
-      g.save();g.translate(dx,dy);clipTransition(g,d,edgeId);
-      if(there===MATERIAL.WATER){ g.fillStyle='rgba(21,32,31,.28)';g.fillRect(0,0,TILE,TILE); }
-      drawSourceTile(g,x,y,0,0,there,region[idx(nx,ny)]);
-      if(there===MATERIAL.WATER){ g.fillStyle='rgba(200,225,214,.08)';g.fillRect(0,0,TILE,TILE); }
-      g.restore();
+  function drawMaterialLayer(g,cx,cy,mat){
+    g.clearRect(0,0,CHUNK*TILE,CHUNK*TILE);
+    g.imageSmoothingEnabled=true;
+    for(let ly=0;ly<CHUNK;ly++)for(let lx=0;lx<CHUNK;lx++){
+      const x=cx*CHUNK+lx,y=cy*CHUNK+ly;if(!valid(x,y))continue;
+      drawSourceTile(g,x,y,lx*TILE,ly*TILE,mat,-1);
     }
+  }
+  function buildMaterialMask(cx,cy,mat){
+    const w=CHUNK*TILE,h=CHUNK*TILE,img=terrainMaskCtx.createImageData(w,h),d=img.data;
+    const feather=.20; // user-approved soft grass/dirt gradient width
+    for(let py=0;py<h;py++){
+      const worldGY=cy*CHUNK+(py+.5)/TILE;
+      for(let px=0;px<w;px++){
+        const worldGX=cx*CHUNK+(px+.5)/TILE;
+        const field=materialFieldAt(worldGX,worldGY,mat);
+        const a=Math.round(smoothStep(.5-feather,.5+feather,field)*255);
+        const i=(py*w+px)*4;d[i]=d[i+1]=d[i+2]=255;d[i+3]=a;
+      }
+    }
+    terrainMaskCtx.putImageData(img,0,0);
   }
   function buildChunk(cx,cy){
     const cvs=document.createElement('canvas');cvs.width=CHUNK*TILE;cvs.height=CHUNK*TILE;
     const g=cvs.getContext('2d');g.imageSmoothingEnabled=true;
-    for(let ly=0;ly<CHUNK;ly++) for(let lx=0;lx<CHUNK;lx++){
-      const x=cx*CHUNK+lx,y=cy*CHUNK+ly;if(!valid(x,y))continue;
-      drawSourceTile(g,x,y,lx*TILE,ly*TILE);
-    }
-    for(let ly=0;ly<CHUNK;ly++) for(let lx=0;lx<CHUNK;lx++){
-      const x=cx*CHUNK+lx,y=cy*CHUNK+ly;if(valid(x,y))drawTransitions(g,x,y,lx*TILE,ly*TILE);
+    // Grass is the base. Higher-priority materials are composited by one continuous global mask each.
+    drawMaterialLayer(g,cx,cy,MATERIAL.GRASS);
+    for(const mat of [MATERIAL.DIRT,MATERIAL.ASPHALT,MATERIAL.WATER]){
+      drawMaterialLayer(terrainLayerCtx,cx,cy,mat);
+      buildMaterialMask(cx,cy,mat);
+      terrainLayerCtx.globalCompositeOperation='destination-in';
+      terrainLayerCtx.drawImage(terrainMaskCanvas,0,0);
+      terrainLayerCtx.globalCompositeOperation='source-over';
+      if(mat===MATERIAL.WATER){terrainLayerCtx.fillStyle='rgba(21,32,31,.20)';terrainLayerCtx.fillRect(0,0,CHUNK*TILE,CHUNK*TILE);}
+      g.drawImage(terrainLayerCanvas,0,0);
     }
     return cvs;
   }
@@ -9459,7 +9784,25 @@ const TILEMAP_SYSTEM = (()=>{
   }
   function validateCriticalPaths(){ const pts=keyCells(),root=pts[0];for(let i=1;i<pts.length;i++)if(!reachable(root,pts[i]))return false;return true; }
 
-  function addWallCell(x,y){ if(wallValid(x,y)&&wallMaterial(x,y)!==MATERIAL.WATER)wallGrid.add(key(x,y)); }
+  function addWallCell(x,y,type='concrete',allowWater=false){
+    if(!wallValid(x,y))return false;
+    if(!allowWater&&wallMaterial(x,y)===MATERIAL.WATER)return false;
+    const k=key(x,y);wallGrid.add(k);wallTypeGrid.set(k,type);return true;
+  }
+  function addBridgeRails(){
+    for(const p of bridgePlans){
+      const deck=p.deck||p.cells||[];
+      for(const c of deck){
+        if(p.horizontal){
+          addWallCell(c.x,c.y-2,'fence',true);
+          addWallCell(c.x,c.y+2,'fence',true);
+        }else{
+          addWallCell(c.x-2,c.y,'fence',true);
+          addWallCell(c.x+2,c.y,'fence',true);
+        }
+      }
+    }
+  }
   function structureCells(kind,cx,cy,w,h){
     const a=[];
     if(kind===0){for(let x=0;x<w;x++)a.push([cx+x,cy]);}
@@ -9469,69 +9812,348 @@ const TILEMAP_SYSTEM = (()=>{
   }
   function farFromCritical(x,y){ const p=wallCenter(x,y);if(Math.hypot(p.x-START.x,p.y-START.y)<500||Math.hypot(p.x-EXIT.x,p.y-EXIT.y)<500)return false;for(const o of objectives)if(Math.hypot(p.x-o.x,p.y-o.y)<o.r+340)return false;return true; }
   function generateWalls(){
-    wallGrid.clear(); const count=5+Math.floor(rng()*5);
-    for(let n=0;n<count;n++){
-      const kind=Math.floor(rng()*3),w=2+Math.floor(rng()*3),h=2+Math.floor(rng()*3);
-      if(WALL_COLS-w-4<=1||WALL_ROWS-h-4<=1) continue;
+    wallGrid.clear(); wallTypeGrid.clear();
+    const facilityCount=3+Math.floor(rng()*4);
+    const defenseCount=4+Math.floor(rng()*5);
+
+    for(let n=0;n<facilityCount;n++){
+      const kind=rng()<.72?2:1,w=3+Math.floor(rng()*3),h=3+Math.floor(rng()*3);
+      if(WALL_COLS-w-4<=1||WALL_ROWS-h-4<=1)continue;
       const cx=2+Math.floor(rng()*(WALL_COLS-w-4)),cy=2+Math.floor(rng()*(WALL_ROWS-h-4));
-      const cells=structureCells(kind,cx,cy,w,h);if(cells.some(([x,y])=>!wallValid(x,y)||!farFromCritical(x,y)||wallMaterial(x,y)===MATERIAL.WATER))continue;
-      const added=[];for(const [x,y] of cells){const k=key(x,y);if(!wallGrid.has(k)){wallGrid.add(k);added.push(k);}}
-      if(!validateCriticalPaths())for(const k of added)wallGrid.delete(k);
+      const cells=structureCells(kind,cx,cy,w,h);
+      if(cells.some(([x,y])=>!wallValid(x,y)||!farFromCritical(x,y)||wallMaterial(x,y)===MATERIAL.WATER))continue;
+      const wallType=rng()<.5?'concrete':'fence',added=[];
+      for(const [x,y] of cells){const k=key(x,y);if(!wallGrid.has(k)&&addWallCell(x,y,wallType))added.push(k);}
+      if(!validateCriticalPaths())for(const k of added){wallGrid.delete(k);wallTypeGrid.delete(k);}
+    }
+
+    for(let n=0;n<defenseCount;n++){
+      const kind=rng()<.58?0:1,w=2+Math.floor(rng()*3),h=2+Math.floor(rng()*2);
+      if(WALL_COLS-w-4<=1||WALL_ROWS-h-4<=1)continue;
+      const cx=2+Math.floor(rng()*(WALL_COLS-w-4)),cy=2+Math.floor(rng()*(WALL_ROWS-h-4));
+      const cells=structureCells(kind,cx,cy,w,h);
+      if(cells.some(([x,y])=>!wallValid(x,y)||!farFromCritical(x,y)||wallMaterial(x,y)===MATERIAL.WATER))continue;
+      const added=[];
+      for(const [x,y] of cells){const k=key(x,y);if(!wallGrid.has(k)&&addWallCell(x,y,'sandbag'))added.push(k);}
+      if(!validateCriticalPaths())for(const k of added){wallGrid.delete(k);wallTypeGrid.delete(k);}
+    }
+    addBridgeRails();
+  }
+  function wallMask(x,y){
+    const type=wallTypeGrid.get(key(x,y))||'concrete';let m=0;
+    const same=(nx,ny)=>wallGrid.has(key(nx,ny))&&(wallTypeGrid.get(key(nx,ny))||'concrete')===type;
+    if(same(x,y-1))m|=1;if(same(x+1,y))m|=2;if(same(x,y+1))m|=4;if(same(x-1,y))m|=8;return m;
+  }
+  const WALL_TYPE_ROW={concrete:0,fence:1,sandbag:2};
+  // Tile map_obj.png concrete row contract:
+  // 0=┴, 1=┼, 2=━, 3=┃, 4=┏, 5=┓, 6=┛, 7=┗
+  // mask bits: up=1, right=2, down=4, left=8.
+  // Tile map_obj.png frame contract confirmed by the user.
+  // Columns: 0=T (left+right+down), 1=cross, 2=horizontal, 3=vertical,
+  // 4=top-right, 5=top-left, 6=bottom-right, 7=bottom-left.
+  // Mask bits: up=1, right=2, down=4, left=8.
+  const WALL_FRAME={
+    14:[0,0], // left + right + down: base T
+    11:[0,0], // left + right + up: rotate 180
+    7:[0,0],  // up + right + down: rotate -90
+    13:[0,0], // up + down + left: rotate +90
+    15:[1,0], // cross
+    10:[2,0], // horizontal
+    5:[3,0],  // vertical
+    12:[4,0], // top-right: left + down
+    6:[5,0],  // top-left: right + down
+    9:[6,0],  // bottom-right: up + left
+    3:[7,0],  // bottom-left: up + right
+    1:[3,0],4:[3,0], // vertical end
+    2:[2,0],8:[2,0], // horizontal end
+    0:[2,0]          // isolated fallback
+  };
+  const WALL_ROTATION={
+    14:0,
+    11:Math.PI,
+    7:-Math.PI*.5,
+    13:Math.PI*.5
+  };
+  function wallFrameForMask(mask){return WALL_FRAME[mask]||WALL_FRAME[0];}
+  function wallRotationForMask(mask){return WALL_ROTATION[mask]||0;}
+  // Concrete wall alpha bounds measured from the 256x256 source cells.
+  // Rendering still uses the complete source cell; these values align the logical pivot and collision.
+  const WALL_VISIBLE_BOUNDS={
+    concrete:{
+      0:[1,80,256,256],1:[0,10,256,256],2:[0,79,247,203],3:[69,7,256,256],
+      4:[0,82,164,256],5:[61,80,256,256],6:[0,9,148,199],7:[56,8,228,199]
+    },
+    fence:{
+      0:[5,0,256,256],1:[0,0,256,256],2:[0,52,245,169],3:[73,0,256,256],
+      4:[0,0,160,256],5:[65,0,256,256],6:[0,4,137,256],7:[71,4,227,256]
+    },
+    sandbag:{
+      0:[0,0,256,256],1:[0,0,256,256],2:[0,76,248,176],3:[70,0,256,256],
+      4:[0,0,154,254],5:[71,0,256,254],6:[0,0,144,181],7:[61,0,228,181]
+    }
+  };
+  function wallVisibleBounds(fr,wallType='concrete'){
+    const row=WALL_VISIBLE_BOUNDS[wallType]||WALL_VISIBLE_BOUNDS.concrete;
+    return row[fr[0]]||[0,0,SRC,SRC];
+  }
+  function wallDrawRect(fr,centerX,centerY,wallType='concrete'){
+    // The atlas was authored as tile-aligned 256x256 cells. Never re-center by alpha bounds.
+    // Every source cell is drawn into the exact same 128x128 world-grid cell.
+    return {
+      x:centerX-WALL_DRAW_SIZE*.5,
+      y:centerY-WALL_DRAW_SIZE*.5,
+      w:WALL_DRAW_SIZE,
+      h:WALL_DRAW_SIZE,
+      scale:WALL_DRAW_SIZE/SRC
+    };
+  }
+  function wallWorldBounds(fr,centerX,centerY,wallType='concrete'){
+    // Bounds are stored as [left, top, right, bottom], not [x, y, width, height].
+    const b=wallVisibleBounds(fr,wallType),d=wallDrawRect(fr,centerX,centerY,wallType);
+    return {
+      x:Math.round(d.x+b[0]*d.scale),
+      y:Math.round(d.y+b[1]*d.scale),
+      w:Math.max(8,Math.round((b[2]-b[0])*d.scale)),
+      h:Math.max(8,Math.round((b[3]-b[1])*d.scale))
+    };
+  }
+  function wallCollisionMetrics(wallType='concrete'){
+    const hb=wallVisibleBounds(WALL_FRAME[10],wallType);
+    const vb=wallVisibleBounds(WALL_FRAME[5],wallType);
+    const s=WALL_DRAW_SIZE/SRC;
+    return {
+      horizontalThickness:Math.max(24,(hb[3]-hb[1])*s),
+      verticalThickness:Math.max(24,(vb[2]-vb[0])*s),
+      reach:WALL_DRAW_SIZE*.5
+    };
+  }
+  function wallCollisionParts(mask,centerX,centerY,wallType='concrete'){
+    // Collision follows the actual visible thickness of each resource row.
+    const m=wallCollisionMetrics(wallType);
+    const hh=m.horizontalThickness*.5,vh=m.verticalThickness*.5,r=m.reach;
+    const parts=[{x:centerX-vh,y:centerY-hh,w:m.verticalThickness,h:m.horizontalThickness}];
+    if(mask&1)parts.push({x:centerX-vh,y:centerY-r,w:m.verticalThickness,h:r-hh});
+    if(mask&2)parts.push({x:centerX+vh,y:centerY-hh,w:r-vh,h:m.horizontalThickness});
+    if(mask&4)parts.push({x:centerX-vh,y:centerY+hh,w:m.verticalThickness,h:r-hh});
+    if(mask&8)parts.push({x:centerX-r,y:centerY-hh,w:r-vh,h:m.horizontalThickness});
+    return parts.map(r=>({x:Math.round(r.x),y:Math.round(r.y),w:Math.max(8,Math.round(r.w)),h:Math.max(8,Math.round(r.h))}));
+  }
+  function registerWallCovers(){
+    for(const k of wallGrid){
+      const [x,y]=k.split(',').map(Number);
+      const p=wallCenter(x,y);
+      const mask=wallMask(x,y);
+      const fr=wallFrameForMask(mask);
+      const wallType=wallTypeGrid.get(k)||'concrete';
+      const parts=wallCollisionParts(mask,p.x,p.y,wallType);
+      parts.forEach((r,i)=>{
+        COVERS.push({
+          x:r.x,y:r.y,w:r.w,h:r.h,
+          type:'wall',hp:0,maxhp:0,
+          tileWall:i===0,
+          wallCollisionOnly:i!==0,
+          tileX:x,tileY:y,
+          wallMaskValue:mask,wallFrame:fr,wallRotation:wallRotationForMask(mask),wallType,
+          visualCenterX:p.x,visualCenterY:p.y,
+          visualW:WALL_DRAW_SIZE,visualH:WALL_DRAW_SIZE,
+          depthY:p.y+WALL_DRAW_SIZE*.5
+        });
+      });
     }
   }
-  function wallMask(x,y){ let m=0;if(wallGrid.has(key(x,y-1)))m|=1;if(wallGrid.has(key(x+1,y)))m|=2;if(wallGrid.has(key(x,y+1)))m|=4;if(wallGrid.has(key(x-1,y)))m|=8;return m; }
-  const WALL_FRAME={
-    10:[0,0],5:[1,0],9:[2,0],3:[3,0],6:[0,1],12:[1,1],15:[2,1],1:[3,1],
-    2:[0,2],4:[1,2],8:[2,2],0:[3,1]
-  };
-  function registerWallCovers(){
-    for(const k of wallGrid){ const [x,y]=k.split(',').map(Number),p=wallCenter(x,y);const c={x:p.x-WALL_TILE/2,y:p.y-WALL_TILE/2,w:WALL_TILE,h:WALL_TILE,type:'wall',hp:0,maxhp:0,tileWall:true,tileX:x,tileY:y};COVERS.push(c); }
-  }
-  // 담 리소스는 확대/축소하지 않는다. 실제 알파 영역을 원본 픽셀 크기 그대로 사용한다.
-  // MAP_GRID_SIZE(32px)는 배치·충돌·연결 판정용 논리 격자일 뿐이다.
-  // 긴 엄폐물은 이미지를 늘이지 않고 동일 직선 리소스를 필요한 수만큼 반복 배치한다.
-  const WALL_ALPHA_BOUNDS={
-    '0,0':[29,119,211,81],  '1,0':[92,34,68,220],
-    '2,0':[30,75,196,152], '3,0':[39,75,184,152],
-    '0,1':[29,70,194,151], '1,1':[36,70,188,151],
-    '2,1':[24,27,198,211], '3,1':[98,56,71,171],
-    '0,2':[34,63,176,103], '1,2':[85,21,78,181],
-    '2,2':[32,61,180,106]
-  };
-  function wallBounds(fr){ return WALL_ALPHA_BOUNDS[fr[0]+','+fr[1]]||[0,0,SRC,SRC]; }
-  function drawWallSpriteNative(g,fr,centerX,centerY){
-    const b=wallBounds(fr);
-    const sx=fr[0]*SRC+b[0], sy=fr[1]*SRC+b[1];
-    const dx=Math.round(centerX-b[2]*0.5), dy=Math.round(centerY-b[3]*0.5);
-    g.drawImage(objectSheet,sx,sy,b[2],b[3],dx,dy,b[2],b[3]);
+  // Render the complete 256x256 source cell into one exact 128x128 world tile.
+  function drawWallSpriteNative(g,fr,centerX,centerY,wallType='concrete',rotation=0){
+    const row=WALL_TYPE_ROW[wallType]??0,sx=fr[0]*SRC,sy=row*SRC;
+    const d=wallDrawRect(fr,centerX,centerY,wallType);
+    if(!rotation){
+      g.drawImage(objectSheet,sx,sy,SRC,SRC,Math.round(d.x),Math.round(d.y),WALL_DRAW_SIZE,WALL_DRAW_SIZE);
+      return;
+    }
+    g.save();
+    g.translate(Math.round(centerX),Math.round(centerY));
+    g.rotate(rotation);
+    g.drawImage(objectSheet,sx,sy,SRC,SRC,-WALL_DRAW_SIZE*.5,-WALL_DRAW_SIZE*.5,WALL_DRAW_SIZE,WALL_DRAW_SIZE);
+    g.restore();
   }
   function drawWallCover(g,c){
     if(!objectLoaded){g.fillStyle='#62594a';g.fillRect(c.x,c.y,c.w,c.h);return;}
-    const m=wallMask(c.tileX,c.tileY),fr=WALL_FRAME[m]||WALL_FRAME[0];
-    g.save();
-    g.imageSmoothingEnabled=true;
-    drawWallSpriteNative(g,fr,c.x+c.w*0.5,c.y+c.h*0.5);
+    const m=c.wallMaskValue??wallMask(c.tileX,c.tileY);
+    const fr=c.wallFrame||WALL_FRAME[m]||WALL_FRAME[0];
+    const cx=Number.isFinite(c.visualCenterX)?c.visualCenterX:c.x+c.w*.5;
+    const cy=Number.isFinite(c.visualCenterY)?c.visualCenterY:c.y+c.h*.5;
+    g.save();g.imageSmoothingEnabled=true;drawWallSpriteNative(g,fr,cx,cy,c.wallType||'concrete',Number.isFinite(c.wallRotation)?c.wallRotation:wallRotationForMask(m));
+    if(debug.wallMask){
+      g.strokeStyle='rgba(80,140,255,.95)';g.lineWidth=2;
+      for(const cc of COVERS){
+        if(cc.tileX===c.tileX&&cc.tileY===c.tileY&&(cc.tileWall||cc.wallCollisionOnly))g.strokeRect(cc.x,cc.y,cc.w,cc.h);
+      }
+      g.fillStyle='#fff';g.font='12px sans-serif';g.fillText(`${m}/c${fr[0]}/r${Math.round((wallRotationForMask(m)||0)*180/Math.PI)}`,c.x+4,c.y+14);
+    }
     g.restore();
-    if(debug.wallMask){g.fillStyle='#fff';g.font='12px sans-serif';g.fillText(String(m),c.x+4,c.y+14);}
+  }
+  let legacyWallVisualGeneration=0;
+  function legacyVisualWallType(c){
+    if(c.visualWallType)return c.visualWallType;
+    if(c.type==='weak'||c.type==='strong')return 'sandbag';
+    return hash(Math.floor(c.x/WALL_TILE),Math.floor(c.y/WALL_TILE),seed)%2?'concrete':'fence';
+  }
+  function resolveLegacyWallOrientation(c){
+    if(c.wallOrientation==='horizontal')return true;
+    if(c.wallOrientation==='vertical')return false;
+    if(typeof c.legacyHorizontal==='boolean')return c.legacyHorizontal;
+    // Legacy square covers have no directional frame. Use the isolated horizontal
+    // fallback only; never infer from alpha bounds or post-normalized collision size.
+    return true;
+  }
+  function legacyWallLayout(c){
+    const horizontal=resolveLegacyWallOrientation(c);
+    c.legacyHorizontal=horizontal;
+    const sourceX=Number.isFinite(c.sourceX)?c.sourceX:c.x;
+    const sourceY=Number.isFinite(c.sourceY)?c.sourceY:c.y;
+    const sourceW=Number.isFinite(c.sourceW)?c.sourceW:c.w;
+    const sourceH=Number.isFinite(c.sourceH)?c.sourceH:c.h;
+    const step=horizontal?WALL_NATIVE_STEP_X:WALL_NATIVE_STEP_Y;
+    const originalLength=horizontal?sourceW:sourceH;
+    const count=Math.max(1,Math.round(originalLength/step));
+    const centerAlong=horizontal?(sourceX+sourceW*.5):(sourceY+sourceH*.5);
+    const start=centerAlong-(count-1)*step*.5;
+    const fixedCenter=horizontal?(sourceY+sourceH*.5):(sourceX+sourceW*.5);
+    return {horizontal,step,count,start,fixedCenter,modules:[],wallType:legacyVisualWallType(c)};
+  }
+  function legacyModuleGridPoint(cx,cy){
+    return {gx:Math.round((cx-X0-WALL_TILE*.5)/WALL_TILE),gy:Math.round((cy-Y0-WALL_TILE*.5)/WALL_TILE)};
+  }
+  function normalizeLegacyWallCovers(){
+    const legacy=COVERS.filter(c=>!c.tileWall&&!c.wallCollisionOnly&&!c.naturalRock&&!c.dead);
+
+    for(const c of legacy){
+      if(c.gridAligned){
+        c.sourceX=c.x;c.sourceY=c.y;c.sourceW=c.w;c.sourceH=c.h;
+        if(Number.isFinite(c.authoredW)&&Number.isFinite(c.authoredH)){
+          c.wallOrientation=c.authoredW>c.authoredH?'horizontal':(c.authoredH>c.authoredW?'vertical':'square');
+        }
+      }
+      if(!Number.isFinite(c.sourceX))c.sourceX=c.x;
+      if(!Number.isFinite(c.sourceY))c.sourceY=c.y;
+      if(!Number.isFinite(c.sourceW))c.sourceW=c.w;
+      if(!Number.isFinite(c.sourceH))c.sourceH=c.h;
+    }
+
+    const groups=new Map();
+    for(const c of legacy){
+      const wallType=legacyVisualWallType(c);
+      const groupKey=c.structureId?`${c.structureId}|${wallType}`:`solo_${legacy.indexOf(c)}|${wallType}`;
+      if(!groups.has(groupKey))groups.set(groupKey,[]);
+      groups.get(groupKey).push(c);
+    }
+
+    for(const covers of groups.values()){
+      const occupied=new Map();
+      const ownerRawModules=new Map();
+
+      for(const c of covers){
+        const l=legacyWallLayout(c);
+        c.wallType=l.wallType;
+        c.wallNativeLayout=l;
+        const raw=[];
+        for(let i=0;i<l.count;i++){
+          const along=l.start+i*l.step;
+          const cx=l.horizontal?along:l.fixedCenter;
+          const cy=l.horizontal?l.fixedCenter:along;
+          const gp=legacyModuleGridPoint(cx,cy);
+          const snappedX=X0+gp.gx*WALL_TILE+WALL_TILE*.5;
+          const snappedY=Y0+gp.gy*WALL_TILE+WALL_TILE*.5;
+          const entry={gx:gp.gx,gy:gp.gy,cx:snappedX,cy:snappedY,wallType:l.wallType,owner:c};
+          raw.push(entry);
+          const k=key(gp.gx,gp.gy);
+          if(!occupied.has(k))occupied.set(k,entry);
+        }
+        ownerRawModules.set(c,raw);
+      }
+
+      const modules=[];
+      for(const m of occupied.values()){
+        let mask=0;
+        const same=(gx,gy)=>{
+          const n=occupied.get(key(gx,gy));
+          return n&&n.wallType===m.wallType;
+        };
+        if(same(m.gx,m.gy-1))mask|=1;
+        if(same(m.gx+1,m.gy))mask|=2;
+        if(same(m.gx,m.gy+1))mask|=4;
+        if(same(m.gx-1,m.gy))mask|=8;
+        modules.push({
+          cx:m.cx,cy:m.cy,gx:m.gx,gy:m.gy,mask,
+          fr:wallFrameForMask(mask),
+          rotation:wallRotationForMask(mask),
+          wallType:m.wallType,
+          owner:m.owner
+        });
+      }
+
+      // Draw the complete connected structure once from a single leader.
+      const leader=covers[0];
+      leader.wallNativeLayout.modules=modules;
+      leader.suppressLegacyWallVisual=false;
+      for(let i=1;i<covers.length;i++){
+        covers[i].wallNativeLayout.modules=[];
+        covers[i].suppressLegacyWallVisual=true;
+      }
+
+      // Keep each original cover as an authoritative collision entry,
+      // but rebuild it from the modules that originated from that cover.
+      for(const c of covers){
+        const own=modules.filter(m=>m.owner===c);
+        const collisionModules=own.length?own:(ownerRawModules.get(c)||[]).map(m=>({
+          ...m,
+          mask:c.wallNativeLayout.horizontal?10:5,
+          wallType:c.wallNativeLayout.wallType
+        }));
+        const rects=[];
+        for(const m of collisionModules){
+          rects.push(...wallCollisionParts(m.mask,m.cx,m.cy,m.wallType));
+        }
+        if(rects.length){
+          const minX=Math.min(...rects.map(r=>r.x)),minY=Math.min(...rects.map(r=>r.y));
+          const maxX=Math.max(...rects.map(r=>r.x+r.w)),maxY=Math.max(...rects.map(r=>r.y+r.h));
+          c.x=minX;c.y=minY;c.w=maxX-minX;c.h=maxY-minY;
+        }
+        c.depthY=c.y+c.h;
+        c.legacyWallVisualGeneration=++legacyWallVisualGeneration;
+      }
+    }
   }
   function drawLegacyCoverAsWallTiles(g,c){
-    if(!objectLoaded) return false;
-    const horizontal=c.w>=c.h;
-    const fr=horizontal?WALL_FRAME[10]:WALL_FRAME[5];
-    const b=wallBounds(fr);
-    const moduleLength=horizontal?b[2]:b[3];
-    const length=horizontal?c.w:c.h;
-    const count=Math.max(1,Math.ceil(length/moduleLength));
-    const start=horizontal?(c.x+c.w*0.5-(count-1)*moduleLength*0.5):(c.y+c.h*0.5-(count-1)*moduleLength*0.5);
-    const fixedCenter=horizontal?(c.y+c.h*0.5):(c.x+c.w*0.5);
-    for(let i=0;i<count;i++){
-      const along=start+i*moduleLength;
-      if(horizontal) drawWallSpriteNative(g,fr,along,fixedCenter);
-      else drawWallSpriteNative(g,fr,fixedCenter,along);
+    if(c.suppressLegacyWallVisual)return true;
+    if(!objectLoaded)return false;
+    const l=c.wallNativeLayout||legacyWallLayout(c),mods=l.modules||[];
+    g.save();g.imageSmoothingEnabled=true;
+    if(mods.length){
+      for(const m of mods)drawWallSpriteNative(g,m.fr,m.cx,m.cy,m.wallType||l.wallType||legacyVisualWallType(c),m.rotation||0);
+    }else{
+      // Fallback before normalization.
+      const fallbackMask=l.horizontal?10:5;
+      const fr=wallFrameForMask(fallbackMask);
+      for(let i=0;i<l.count;i++){
+        const along=l.start+i*l.step;
+        if(l.horizontal)drawWallSpriteNative(g,fr,along,l.fixedCenter,l.wallType||legacyVisualWallType(c),0);
+        else drawWallSpriteNative(g,fr,l.fixedCenter,along,l.wallType||legacyVisualWallType(c),0);
+      }
+    }
+    g.restore();
+    if(debug.wallMask){
+      g.save();g.strokeStyle='rgba(80,140,255,.95)';g.lineWidth=2;g.strokeRect(c.x,c.y,c.w,c.h);
+      for(const m of mods){g.strokeStyle='rgba(255,220,80,.9)';g.strokeRect(m.cx-WALL_TILE*.5,m.cy-WALL_TILE*.5,WALL_TILE,WALL_TILE);}
+      g.restore();
     }
     return true;
   }
   function drawCover(g,c){
+    if(c.wallCollisionOnly){
+      if(debug.wallMask){g.save();g.strokeStyle='rgba(255,170,40,.9)';g.lineWidth=1.5;g.strokeRect(c.x,c.y,c.w,c.h);g.restore();}
+      return;
+    }
+    if(c.naturalRock){drawNaturalObject(g,{name:c.naturalName,x:c.visualCenterX,y:c.visualCenterY,w:c.visualW,h:c.visualH,kind:'rock'},1);return;}
     if(c.tileWall){drawWallCover(g,c);return;}
     if(drawLegacyCoverAsWallTiles(g,c)){
       if(c.maxhp>0&&c.hp<c.maxhp){g.fillStyle='#200';g.fillRect(c.x,c.y-5,c.w,3);g.fillStyle=c.type==='strong'?'#ffae42':'#9be39b';g.fillRect(c.x,c.y-5,c.w*Math.max(0,c.hp/c.maxhp),3);}
@@ -9545,10 +10167,10 @@ const TILEMAP_SYSTEM = (()=>{
   function prepare(nextSeed=seed){
     let ok=false;
     for(let attempt=0;attempt<12&&!ok;attempt++){
-      generateTerrain((nextSeed+attempt)>>>0); wallGrid.clear(); ok=validateCriticalPaths();
+      generateTerrain((nextSeed+attempt)>>>0); wallGrid.clear(); wallTypeGrid.clear(); ok=validateCriticalPaths();
     }
-    rng=mulberry32(seed^0xA5A5A5A5); generateWalls(); registerWallCovers(); invalidate(); ready=worldLoaded;
-    if(typeof pushLog==='function')pushLog(`🗺️ 타일맵 시드 ${seed} · 지형 출력 128px·논리 격자 32px·담 원본 반복·청크 8×8 · 재질 경계/물/담 자동 생성 완료`,'#8de8ff');
+    rng=mulberry32(seed^0xA5A5A5A5); generateWalls(); registerWallCovers(); generateNaturalObjects(); invalidate(); ready=worldLoaded;
+    if(typeof pushLog==='function')pushLog(`🗺️ 타일맵 시드 ${seed} · 지형 출력 128px·원본 담 간격 192px·256px 셀 전체 출력·가시영역 충돌 정합·청크 8×8 · 재질 경계·아스팔트 다리·철창 난간·직선동선 차단 산맥·협곡 통로 자동 생성 완료`,'#8de8ff');
   }
   function regenerate(newSeed){
     TILEMAP_FORCED_SEED=newSeed>>>0;
@@ -9557,7 +10179,13 @@ const TILEMAP_SYSTEM = (()=>{
     if(typeof toast==='function')toast(`랜덤 맵 재생성 · Seed ${seed}`);
   }
   function toggleDebug(){ debug.grid=!debug.grid;debug.nav=debug.grid;debug.wallMask=debug.grid;invalidate(); }
-  return {get ready(){return ready;},get seed(){return seed;},set seed(v){seed=v>>>0;},drawGround,isWaterWorld,drawCover,prepare,regenerate,toggleDebug,materialAtCell,cellFromWorld};
+  function coverDepthY(c){
+    if(Number.isFinite(c.depthY))return c.depthY;
+    if(c.naturalRock)return (c.visualCenterY||c.y+c.h*.5)+(c.visualH||c.h)*.5;
+    if(c.tileWall)return (c.visualCenterY||c.y+c.h*.5)+WALL_DRAW_SIZE*.5;
+    return c.y+c.h;
+  }
+  return {get ready(){return ready;},get seed(){return seed;},set seed(v){seed=v>>>0;},drawGround,isWaterWorld,drawCover,drawNaturalBushes,appendNaturalDepthEntries,coverDepthY,prepare,regenerate,toggleDebug,materialAtCell,cellFromWorld,normalizeLegacyWallCovers};
 })();
 
 // Preserve the original generator, then add tile terrain and modular walls.
@@ -9569,10 +10197,14 @@ genCovers=function(){
   TILEMAP_FORCED_SEED=null;
   // Terrain is generated once before legacy covers; legacy river is disabled because water now comes from the tile map.
   TILEMAP_SYSTEM.prepare(TILEMAP_SYSTEM.seed);
-  const generatedCovers=COVERS.filter(c=>c.tileWall);
+  const generatedCovers=COVERS.filter(c=>c.tileWall||c.naturalRock);
+  const generatedBushes=bushes.slice();
   const oldRiver=biome.river; biome.river=0; originalGenCovers(); biome.river=oldRiver;
-  // Tile walls are appended after legacy covers so existing missions and cover prefabs remain intact.
+  // Existing authored covers are re-laid out to native wall modules, and collision is expanded to the rendered union.
+  TILEMAP_SYSTEM.normalizeLegacyWallCovers();
+  // 신규 방향별 담/바위산 충돌과 에셋 수풀을 기존 레벨 오브젝트 뒤에 복원한다.
   COVERS.push(...generatedCovers);
+  bushes.push(...generatedBushes);
 };
 
 // Grid-backed water lookup replaces thousands of rectangle scans while preserving the same public function.
