@@ -1,7 +1,7 @@
 <!--
 DELIVERY TO DIE integration provenance
 Base: DELIVERY_TO_DIE_머리_몸통분리_F7_기본값반영_수정본.html
-Additive patch: procedural tile terrain, material transitions, water collision, modular wall tiles, seeded generation.
+Additive patch: procedural tile terrain, 16-variant terrain atlas, world-space macro brightness noise, material transitions, water collision, modular wall tiles, seeded generation.
 Distributed as TXT by project constitution.
 -->
 <!DOCTYPE html>
@@ -9546,8 +9546,19 @@ const TILEMAP_SYSTEM = (()=>{
   const MATERIAL={ GRASS:0, DIRT:1, ASPHALT:2, CONCRETE:2, WATER:3 };
   const MATERIAL_NAME=['grass','dirt','asphalt','water'];
   const PRIORITY=[0,1,2,3];
-  const ROW_BY_MATERIAL=[0,1,2,3]; // grass, dirt, asphalt, water
-  // Each material row contains two continuous 4-cell patterns: A=columns 0..3, B=columns 4..7.
+  // Tile map_world(7).png atlas contract: grass rows 0-1, dirt 2-3, concrete 4-5, water row 6.
+  const MATERIAL_ROWS={
+    [MATERIAL.GRASS]:[0,1],
+    [MATERIAL.DIRT]:[2,3],
+    [MATERIAL.ASPHALT]:[4,5],
+    [MATERIAL.WATER]:[6]
+  };
+  const MATERIAL_VARIANT_COUNT={
+    [MATERIAL.GRASS]:16,
+    [MATERIAL.DIRT]:16,
+    [MATERIAL.ASPHALT]:16,
+    [MATERIAL.WATER]:3
+  };
   const worldSheet=new Image(), objectSheet=new Image(), objectSheet2=new Image();
   worldSheet.decoding='async'; objectSheet.decoding='async'; objectSheet2.decoding='async';
   let worldLoaded=false, objectLoaded=false, object2Loaded=false, ready=false;
@@ -9577,7 +9588,7 @@ const TILEMAP_SYSTEM = (()=>{
     };
     next();
   }
-  loadFallback(worldSheet,['Tile map_world.png'],ok=>{ worldLoaded=ok; ready=worldLoaded; invalidate(); });
+  loadFallback(worldSheet,['Tile map_world(7).png','Tile map_world.png'],ok=>{ worldLoaded=ok; ready=worldLoaded; invalidate(); });
   loadFallback(objectSheet,['Tile map_obj.png'],ok=>{ objectLoaded=ok; invalidate(); });
   loadFallback(objectSheet2,['Tile map_obj_2.png'],ok=>{ object2Loaded=ok; invalidate(); });
 
@@ -9866,22 +9877,34 @@ const TILEMAP_SYSTEM = (()=>{
     labelRegions(); invalidate();
   }
 
+  function terrainVariantForCell(x,y,mat){
+    const h0=hash(x,y,seed^0x51f15e3d);
+    if(mat===MATERIAL.WATER)return h0%MATERIAL_VARIANT_COUNT[MATERIAL.WATER];
+    // First atlas row is the quieter set; second row contains stronger scatter/patch variants.
+    // Keep the detailed row rarer while every world cell remains deterministic.
+    const detailed=(h0%100)>=68;
+    const local=hash(x+37,y-19,seed^0x9e3779b9)%8;
+    return (detailed?8:0)+local;
+  }
   function frameForCell(x,y,matOverride=null,regionOverride=null){
     const mat=matOverride==null?materialAtCell(x,y):matOverride;
-    const rid=regionOverride==null?(valid(x,y)?region[idx(x,y)]:-1):regionOverride;
-    const meta=regionMeta.get(rid)||{set:'A'};
-    // 헌법: 0~3과 4~7은 서로 다른 4칸 연속 패턴 세트다.
-    // 재질 덩어리마다 A/B를 고정하고, 세트 내부 순서는 유지한다.
-    // 행마다 고정 오프셋을 더해 같은 세로 줄이 반복되는 현상만 완화한다.
-    const base=meta.set==='B'?4:0;
-    const rowOffset=hash(rid,y,seed)%4;
-    const local=imod((x-(meta.originX||0))+(meta.offset||0)+rowOffset,4);
-    return {sx:(base+local)*SRC,sy:ROW_BY_MATERIAL[mat]*SRC};
+    const variant=terrainVariantForCell(x,y,mat);
+    const rows=MATERIAL_ROWS[mat]||MATERIAL_ROWS[MATERIAL.GRASS];
+    const row=rows.length===1?rows[0]:rows[Math.floor(variant/8)%rows.length];
+    const col=variant%8;
+    return {sx:col*SRC,sy:row*SRC};
   }
   function drawSourceTile(g,x,y,dx,dy,matOverride=null,ridOverride=null){
     if(!worldLoaded) return;
     const f=frameForCell(x,y,matOverride,ridOverride);
-    g.drawImage(worldSheet,f.sx,f.sy,SRC,SRC,dx,dy,TILE,TILE);
+    // The 256px atlas is rendered at 128px in world space. Bilinear downscaling
+    // blends dark grass/stone pixels into the flat base color and makes the whole
+    // tile look darker than the source. Nearest-neighbour keeps the authored RGB.
+    const inset=1;
+    const prevSmooth=g.imageSmoothingEnabled;
+    g.imageSmoothingEnabled=false;
+    g.drawImage(worldSheet,f.sx+inset,f.sy+inset,SRC-inset*2,SRC-inset*2,dx,dy,TILE,TILE);
+    g.imageSmoothingEnabled=prevSmooth;
   }
   // Continuous terrain blending across the entire chunk.
   // A global bilinear material field is sampled from cell centers, so adjacent cells/chunks share
@@ -9893,6 +9916,69 @@ const TILEMAP_SYSTEM = (()=>{
   terrainMaskCanvas.width=terrainMaskCanvas.height=(CHUNK*TILE)/TERRAIN_MASK_SCALE;
   const terrainLayerCtx=terrainLayerCanvas.getContext('2d');
   const terrainMaskCtx=terrainMaskCanvas.getContext('2d',{willReadFrequently:true});
+
+  // World-space Macro Noise: keep the source tile image untouched.
+  // Bright regions use a low-intensity additive terrain-colored overlay, so the source can never become darker and no pixel readback is required.
+  const MACRO_MAP_CELLS=160;
+  const macroBoostCanvas=document.createElement('canvas');
+  macroBoostCanvas.width=macroBoostCanvas.height=MACRO_MAP_CELLS+1;
+  const macroBoostCtx=macroBoostCanvas.getContext('2d',{willReadFrequently:true});
+  const MACRO_NOISE_SETTINGS={
+    // Additive color increments. These values can only brighten the source.
+    // Scales stay above the brightness-map sampling interval to avoid blocky blobs.
+    [MATERIAL.GRASS]:{scaleA:152,scaleB:76,scaleC:40,scaleD:22, alpha:.070, color:[34,60,8]},
+    [MATERIAL.DIRT]:{scaleA:164,scaleB:82,scaleC:43,scaleD:23, alpha:.058, color:[50,31,11]},
+    [MATERIAL.ASPHALT]:{scaleA:188,scaleB:94,scaleC:49,scaleD:26, alpha:.032, color:[28,28,26]},
+    [MATERIAL.WATER]:{scaleA:176,scaleB:88,scaleC:46,scaleD:24, alpha:.032, color:[9,29,40]}
+  };
+  function noiseHash01(x,y,salt){return hash(x,y,(seed^salt)>>>0)/4294967295;}
+  function noiseFade(t){return t*t*t*(t*(t*6-15)+10);}
+  function valueNoise2D(x,y,salt){
+    const x0=Math.floor(x),y0=Math.floor(y),fx=noiseFade(x-x0),fy=noiseFade(y-y0);
+    const a=noiseHash01(x0,y0,salt),b=noiseHash01(x0+1,y0,salt);
+    const c=noiseHash01(x0,y0+1,salt),d=noiseHash01(x0+1,y0+1,salt);
+    const top=a+(b-a)*fx,bot=c+(d-c)*fx;
+    return top+(bot-top)*fy;
+  }
+  function macroBoostAt(wx,wy,mat){
+    const st=MACRO_NOISE_SETTINGS[mat]||MACRO_NOISE_SETTINGS[MATERIAL.GRASS];
+    const a=valueNoise2D(wx/st.scaleA,wy/st.scaleA,0x13579bdf);
+    const b=valueNoise2D(wx/st.scaleB,wy/st.scaleB,0x2468ace0);
+    const c=valueNoise2D(wx/st.scaleC,wy/st.scaleC,0x5f356495);
+    const d=valueNoise2D(wx/st.scaleD,wy/st.scaleD,0x7a4f19c3);
+    const n=a*.12+b*.26+c*.36+d*.26;
+    // Wider threshold and quintic interpolation produce softer entry/exit boundaries.
+    // Base remains untouched; only the upper range receives additive light.
+    const t=Math.max(0,Math.min(1,(n-.43)/(.82-.43)));
+    return t*t*t*(t*(t*6-15)+10);
+  }
+  function buildMacroBoostMap(cx,cy){
+    const size=MACRO_MAP_CELLS+1;
+    const image=macroBoostCtx.createImageData(size,size),data=image.data;
+    const chunkWorldX=X0+cx*CHUNK*TILE,chunkWorldY=Y0+cy*CHUNK*TILE;
+    const step=(CHUNK*TILE)/MACRO_MAP_CELLS;
+    for(let py=0;py<size;py++)for(let px=0;px<size;px++){
+      const wx=chunkWorldX+px*step,wy=chunkWorldY+py*step;
+      const cell=cellFromWorld(wx,wy),mat=materialAtCell(cell.x,cell.y);
+      const st=MACRO_NOISE_SETTINGS[mat]||MACRO_NOISE_SETTINGS[MATERIAL.GRASS];
+      const boost=macroBoostAt(wx,wy,mat);
+      const i=(py*size+px)*4;
+      data[i]=st.color[0];data[i+1]=st.color[1];data[i+2]=st.color[2];
+      data[i+3]=Math.round(255*st.alpha*boost);
+    }
+    macroBoostCtx.putImageData(image,0,0);
+  }
+  function applyMacroBrightness(g,cx,cy){
+    buildMacroBoostMap(cx,cy);
+    g.save();
+    g.imageSmoothingEnabled=true;
+    g.globalCompositeOperation='lighter';
+
+    // Do not apply any terrain-wide correction. The atlas source remains the exact base color.
+    // Only local additive noise is drawn on top.
+    g.drawImage(macroBoostCanvas,0,0,macroBoostCanvas.width,macroBoostCanvas.height,0,0,CHUNK*TILE,CHUNK*TILE);
+    g.restore();
+  }
   function smoothStep(a,b,v){const t=Math.max(0,Math.min(1,(v-a)/(b-a)));return t*t*(3-2*t);}
   function materialFieldAt(worldGX,worldGY,thresholdMat){
     // Grid values live at tile centers. Interpolating the four nearest centers creates a continuous curve.
@@ -9941,6 +10027,7 @@ const TILEMAP_SYSTEM = (()=>{
       if(mat===MATERIAL.WATER){terrainLayerCtx.fillStyle='rgba(21,32,31,.20)';terrainLayerCtx.fillRect(0,0,CHUNK*TILE,CHUNK*TILE);}
       g.drawImage(terrainLayerCanvas,0,0);
     }
+    applyMacroBrightness(g,cx,cy);
     return cvs;
   }
   function getChunk(cx,cy){
@@ -9954,7 +10041,12 @@ const TILEMAP_SYSTEM = (()=>{
     const viewW=w/z,viewH=h/z;
     const minCX=Math.max(0,Math.floor((camObj.x-X0)/(CHUNK*TILE))-1),maxCX=Math.min(Math.ceil(COLS/CHUNK)-1,Math.floor((camObj.x+viewW-X0)/(CHUNK*TILE))+1);
     const minCY=Math.max(0,Math.floor((camObj.y-Y0)/(CHUNK*TILE))-1),maxCY=Math.min(Math.ceil(ROWS/CHUNK)-1,Math.floor((camObj.y+viewH-Y0)/(CHUNK*TILE))+1);
-    for(let cy=minCY;cy<=maxCY;cy++)for(let cx=minCX;cx<=maxCX;cx++)g.drawImage(getChunk(cx,cy),X0+cx*CHUNK*TILE,Y0+cy*CHUNK*TILE);
+    for(let cy=minCY;cy<=maxCY;cy++)for(let cx=minCX;cx<=maxCX;cx++){
+      const px=Math.round(X0+cx*CHUNK*TILE),py=Math.round(Y0+cy*CHUNK*TILE);
+      // Draw cached chunks with a 1px right/bottom overlap. This prevents the canvas
+      // background from leaking through due to camera scaling/sub-pixel sampling.
+      g.drawImage(getChunk(cx,cy),px,py,CHUNK*TILE+1,CHUNK*TILE+1);
+    }
     if(debug.grid||debug.nav){
       const sx=Math.max(0,Math.floor((camObj.x-X0)/TILE)-1),ex=Math.min(COLS-1,Math.ceil((camObj.x+viewW-X0)/TILE)+1);
       const sy=Math.max(0,Math.floor((camObj.y-Y0)/TILE)-1),ey=Math.min(ROWS-1,Math.ceil((camObj.y+viewH-Y0)/TILE)+1);
