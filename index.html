@@ -1,7 +1,7 @@
 <!--
 DELIVERY TO DIE integration provenance
 Base: DELIVERY_TO_DIE_머리_몸통분리_F7_기본값반영_수정본.html
-Additive patch: procedural tile terrain, 16-variant terrain atlas, world-space macro brightness noise, material transitions, water collision, modular wall tiles, seeded generation.
+Additive patch: procedural tile terrain, material transitions, water collision, modular wall tiles, seeded generation.
 Distributed as TXT by project constitution.
 -->
 <!DOCTYPE html>
@@ -5395,7 +5395,18 @@ function updateDebugOverlay(force=false){
   el.textContent='DEBUG frame '+frameN+'  '+DBG.lastFrameMs.toFixed(1)+'ms max '+DBG.maxFrameMs.toFixed(1)+'ms  section:'+DBG.section+'\n'+
     counters+'\n'+rg+'\n'+(DBG.err?'ERR '+DBG.err+'\n':'')+'SLOW\n'+DBG.slow.join('\n')+'\nLOG\n'+DBG.lines.join('\n');
 }
-function debugToggle(){ DBG.on=!DBG.on; updateDebugOverlay(true); toast(DBG.on?'디버그 ON':'디버그 OFF'); }
+function debugToggle(){
+  DBG.on=!DBG.on;
+  updateDebugOverlay(true);
+  // TILEMAP_SYSTEM은 const로 선언되어 window 프로퍼티가 아니다.
+  // 따라서 window.TILEMAP_SYSTEM 검사 없이 직접 참조해야 F9에서 잔디 패널이 열린다.
+  try{
+    if(typeof TILEMAP_SYSTEM!=="undefined" && typeof TILEMAP_SYSTEM.setGrassDebugPanelVisible==="function"){
+      TILEMAP_SYSTEM.setGrassDebugPanelVisible(DBG.on);
+    }
+  }catch(_e){}
+  toast(DBG.on?'디버그 ON':'디버그 OFF');
+}
 window.addEventListener('error',e=>dbgCrash(e.error||e.message));
 window.addEventListener('unhandledrejection',e=>dbgCrash(e.reason||'unhandled rejection'));
 function nearbyEnemies(x,y){ const cx=Math.floor(x/EGRID),cy=Math.floor(y/EGRID),out=[]; for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++){ const a=enemyGrid[(cx+i)+"_"+(cy+j)]; if(a) for(let k=0;k<a.length;k++) out.push(a[k]); } return out; }
@@ -9546,19 +9557,10 @@ const TILEMAP_SYSTEM = (()=>{
   const MATERIAL={ GRASS:0, DIRT:1, ASPHALT:2, CONCRETE:2, WATER:3 };
   const MATERIAL_NAME=['grass','dirt','asphalt','water'];
   const PRIORITY=[0,1,2,3];
-  // Tile map_world(7).png atlas contract: grass rows 0-1, dirt 2-3, concrete 4-5, water row 6.
-  const MATERIAL_ROWS={
-    [MATERIAL.GRASS]:[0,1],
-    [MATERIAL.DIRT]:[2,3],
-    [MATERIAL.ASPHALT]:[4,5],
-    [MATERIAL.WATER]:[6]
-  };
-  const MATERIAL_VARIANT_COUNT={
-    [MATERIAL.GRASS]:16,
-    [MATERIAL.DIRT]:16,
-    [MATERIAL.ASPHALT]:16,
-    [MATERIAL.WATER]:3
-  };
+  // Tile map_world(7).png 실제 배치: 각 재질이 2개 행을 사용한다.
+  // 풀=0, 흙=2, 아스팔트=4, 물=6. 기존 [0,1,2,3]은 흙을 풀 행에서, 아스팔트를 흙 행에서 읽는 오류였다.
+  const ROW_BY_MATERIAL=[0,2,4,6]; // grass, dirt, asphalt, water
+  // Each material row contains two continuous 4-cell patterns: A=columns 0..3, B=columns 4..7.
   const worldSheet=new Image(), objectSheet=new Image(), objectSheet2=new Image();
   worldSheet.decoding='async'; objectSheet.decoding='async'; objectSheet2.decoding='async';
   let worldLoaded=false, objectLoaded=false, object2Loaded=false, ready=false;
@@ -9588,7 +9590,7 @@ const TILEMAP_SYSTEM = (()=>{
     };
     next();
   }
-  loadFallback(worldSheet,['Tile map_world(7).png','Tile map_world.png'],ok=>{ worldLoaded=ok; ready=worldLoaded; invalidate(); });
+  loadFallback(worldSheet,['Tile map_world.png'],ok=>{ worldLoaded=ok; ready=worldLoaded; invalidate(); });
   loadFallback(objectSheet,['Tile map_obj.png'],ok=>{ objectLoaded=ok; invalidate(); });
   loadFallback(objectSheet2,['Tile map_obj_2.png'],ok=>{ object2Loaded=ok; invalidate(); });
 
@@ -9877,117 +9879,129 @@ const TILEMAP_SYSTEM = (()=>{
     labelRegions(); invalidate();
   }
 
-  function terrainVariantForCell(x,y,mat){
-    const h0=hash(x,y,seed^0x51f15e3d);
-    if(mat===MATERIAL.WATER)return h0%MATERIAL_VARIANT_COUNT[MATERIAL.WATER];
-    // First atlas row is the quieter set; second row contains stronger scatter/patch variants.
-    // Keep the detailed row rarer while every world cell remains deterministic.
-    const detailed=(h0%100)>=68;
-    const local=hash(x+37,y-19,seed^0x9e3779b9)%8;
-    return (detailed?8:0)+local;
-  }
   function frameForCell(x,y,matOverride=null,regionOverride=null){
     const mat=matOverride==null?materialAtCell(x,y):matOverride;
-    const variant=terrainVariantForCell(x,y,mat);
-    const rows=MATERIAL_ROWS[mat]||MATERIAL_ROWS[MATERIAL.GRASS];
-    const row=rows.length===1?rows[0]:rows[Math.floor(variant/8)%rows.length];
-    const col=variant%8;
-    return {sx:col*SRC,sy:row*SRC};
+    const rid=regionOverride==null?(valid(x,y)?region[idx(x,y)]:-1):regionOverride;
+    const meta=regionMeta.get(rid)||{set:'A'};
+    // 풀/흙/아스팔트는 0~3, 4~7의 두 연속 패턴 세트를 그대로 사용한다.
+    // 물 행은 유효 타일이 0~5까지만 있으므로 검은 빈 칸(6~7)을 절대 선택하지 않는다.
+    const rowOffset=hash(rid,y,seed)%4;
+    const patternIndex=(x-(meta.originX||0))+(meta.offset||0)+rowOffset;
+    let column;
+    if(mat===MATERIAL.WATER){
+      column=imod(patternIndex,6);
+    }else{
+      const base=meta.set==='B'?4:0;
+      column=base+imod(patternIndex,4);
+    }
+    return {sx:column*SRC,sy:ROW_BY_MATERIAL[mat]*SRC};
   }
   function drawSourceTile(g,x,y,dx,dy,matOverride=null,ridOverride=null){
     if(!worldLoaded) return;
     const f=frameForCell(x,y,matOverride,ridOverride);
-    // The 256px atlas is rendered at 128px in world space. Bilinear downscaling
-    // blends dark grass/stone pixels into the flat base color and makes the whole
-    // tile look darker than the source. Nearest-neighbour keeps the authored RGB.
-    const inset=1;
-    const prevSmooth=g.imageSmoothingEnabled;
-    g.imageSmoothingEnabled=false;
-    g.drawImage(worldSheet,f.sx+inset,f.sy+inset,SRC-inset*2,SRC-inset*2,dx,dy,TILE,TILE);
-    g.imageSmoothingEnabled=prevSmooth;
+    g.drawImage(worldSheet,f.sx,f.sy,SRC,SRC,dx,dy,TILE,TILE);
   }
-  // Continuous terrain blending across the entire chunk.
-  // A global bilinear material field is sampled from cell centers, so adjacent cells/chunks share
-  // the same boundary and never produce isolated square/triangle patches.
-  const TERRAIN_MASK_SCALE=4;
+  // 기존 연속 경계 블렌딩 유지.
+  // 셀 중심의 전역 bilinear 재질 필드를 사용하므로 청크를 넘어 동일한 곡선 경계를 공유한다.
+  // 이번 수정에서는 경계 알고리즘을 바꾸지 않고 스프라이트 행 매핑 오류만 바로잡는다.
+  const TERRAIN_MASK_SCALE=2;
+  const GRASS_FX_SCALE=2;
   const terrainLayerCanvas=document.createElement('canvas');
   const terrainMaskCanvas=document.createElement('canvas');
+  const terrainFxCanvas=document.createElement('canvas');
+  const grassFxMaskCanvas=document.createElement('canvas');
+  const grassDetailCanvas=document.createElement('canvas');
+  const grassDetailMaskCanvas=document.createElement('canvas');
   terrainLayerCanvas.width=terrainLayerCanvas.height=CHUNK*TILE;
   terrainMaskCanvas.width=terrainMaskCanvas.height=(CHUNK*TILE)/TERRAIN_MASK_SCALE;
+  terrainFxCanvas.width=terrainFxCanvas.height=(CHUNK*TILE)/GRASS_FX_SCALE;
+  grassFxMaskCanvas.width=grassFxMaskCanvas.height=(CHUNK*TILE)/GRASS_FX_SCALE;
+  grassDetailCanvas.width=grassDetailCanvas.height=(CHUNK*TILE)/GRASS_FX_SCALE;
+  grassDetailMaskCanvas.width=grassDetailMaskCanvas.height=(CHUNK*TILE)/GRASS_FX_SCALE;
   const terrainLayerCtx=terrainLayerCanvas.getContext('2d');
   const terrainMaskCtx=terrainMaskCanvas.getContext('2d',{willReadFrequently:true});
+  const terrainFxCtx=terrainFxCanvas.getContext('2d',{willReadFrequently:true});
+  const grassFxMaskCtx=grassFxMaskCanvas.getContext('2d',{willReadFrequently:true});
+  const grassDetailCtx=grassDetailCanvas.getContext('2d',{willReadFrequently:true});
+  const grassDetailMaskCtx=grassDetailMaskCanvas.getContext('2d',{willReadFrequently:true});
 
-  // World-space Macro Noise: keep the source tile image untouched.
-  // Bright regions use a low-intensity additive terrain-colored overlay, so the source can never become darker and no pixel readback is required.
-  const MACRO_MAP_CELLS=160;
-  const macroBoostCanvas=document.createElement('canvas');
-  macroBoostCanvas.width=macroBoostCanvas.height=MACRO_MAP_CELLS+1;
-  const macroBoostCtx=macroBoostCanvas.getContext('2d',{willReadFrequently:true});
-  const MACRO_NOISE_SETTINGS={
-    // Additive color increments. These values can only brighten the source.
-    // Scales stay above the brightness-map sampling interval to avoid blocky blobs.
-    [MATERIAL.GRASS]:{scaleA:152,scaleB:76,scaleC:40,scaleD:22, alpha:.070, color:[34,60,8]},
-    [MATERIAL.DIRT]:{scaleA:164,scaleB:82,scaleC:43,scaleD:23, alpha:.058, color:[50,31,11]},
-    [MATERIAL.ASPHALT]:{scaleA:188,scaleB:94,scaleC:49,scaleD:26, alpha:.032, color:[28,28,26]},
-    [MATERIAL.WATER]:{scaleA:176,scaleB:88,scaleC:46,scaleD:24, alpha:.032, color:[9,29,40]}
+  // 잔디 3톤 가이드
+  // - 기본색은 기존 타일의 어두운 초록을 유지한다.
+  // - 중간톤/밝은톤은 화면 전역에 넓게 깔리되, 완전히 떡칠하지 않고 반투명 점묘가 겹쳐진 형태로 만든다.
+  // - 패턴은 좌우로 조금 긴 군집으로 배치하여, 하늘에서 약간 기울여 내려다보는 느낌을 유지한다.
+  // - 사용자가 "전체가 어두워졌다"고 느끼지 않도록 마지막에 약한 색 복원 패스를 둔다.
+  // 잔디 디버그 튜닝값. F9 디버그 패널에서 실시간 조절 가능.
+  const GRASS_TUNE={
+    baseHex:'#96aa42',      // 원본 잔디 밝기 복원용 후처리 색
+    midHex:'#677c2d',       // 중간톤 점묘 색
+    highHex:'#7d9239',      // 밝은톤 점묘 색
+    density:2.00,           // 화면 전체 분포량 배수 (사용자 기본값 적용)
+    clusterScale:5.30,      // 큰 얼룩 크기 배수 (사용자 기본값 적용)
+    midAlpha:0.80,
+    highAlpha:0.40,
+    recoveryAlpha:0.265
   };
-  function noiseHash01(x,y,salt){return hash(x,y,(seed^salt)>>>0)/4294967295;}
-  function noiseFade(t){return t*t*t*(t*(t*6-15)+10);}
-  function valueNoise2D(x,y,salt){
-    const x0=Math.floor(x),y0=Math.floor(y),fx=noiseFade(x-x0),fy=noiseFade(y-y0);
-    const a=noiseHash01(x0,y0,salt),b=noiseHash01(x0+1,y0,salt);
-    const c=noiseHash01(x0,y0+1,salt),d=noiseHash01(x0+1,y0+1,salt);
-    const top=a+(b-a)*fx,bot=c+(d-c)*fx;
-    return top+(bot-top)*fy;
+  let GRASS_TONE_MID=[103,124,45];
+  let GRASS_TONE_HIGH=[125,146,57];
+  let GRASS_RECOVERY=[150,170,66];
+  function hexToRgb(hex,fallback){
+    const m=String(hex||'').trim().match(/^#?([0-9a-f]{6})$/i);
+    if(!m)return fallback.slice();
+    const n=parseInt(m[1],16);return[(n>>16)&255,(n>>8)&255,n&255];
   }
-  function macroBoostAt(wx,wy,mat){
-    const st=MACRO_NOISE_SETTINGS[mat]||MACRO_NOISE_SETTINGS[MATERIAL.GRASS];
-    const a=valueNoise2D(wx/st.scaleA,wy/st.scaleA,0x13579bdf);
-    const b=valueNoise2D(wx/st.scaleB,wy/st.scaleB,0x2468ace0);
-    const c=valueNoise2D(wx/st.scaleC,wy/st.scaleC,0x5f356495);
-    const d=valueNoise2D(wx/st.scaleD,wy/st.scaleD,0x7a4f19c3);
-    const n=a*.12+b*.26+c*.36+d*.26;
-    // Wider threshold and quintic interpolation produce softer entry/exit boundaries.
-    // Base remains untouched; only the upper range receives additive light.
-    const t=Math.max(0,Math.min(1,(n-.43)/(.82-.43)));
-    return t*t*t*(t*(t*6-15)+10);
+  function syncGrassTuneColors(){
+    GRASS_TONE_MID=hexToRgb(GRASS_TUNE.midHex,GRASS_TONE_MID);
+    GRASS_TONE_HIGH=hexToRgb(GRASS_TUNE.highHex,GRASS_TONE_HIGH);
+    GRASS_RECOVERY=hexToRgb(GRASS_TUNE.baseHex,GRASS_RECOVERY);
   }
-  function buildMacroBoostMap(cx,cy){
-    const size=MACRO_MAP_CELLS+1;
-    const image=macroBoostCtx.createImageData(size,size),data=image.data;
-    const chunkWorldX=X0+cx*CHUNK*TILE,chunkWorldY=Y0+cy*CHUNK*TILE;
-    const step=(CHUNK*TILE)/MACRO_MAP_CELLS;
-    for(let py=0;py<size;py++)for(let px=0;px<size;px++){
-      const wx=chunkWorldX+px*step,wy=chunkWorldY+py*step;
-      const cell=cellFromWorld(wx,wy),mat=materialAtCell(cell.x,cell.y);
-      const st=MACRO_NOISE_SETTINGS[mat]||MACRO_NOISE_SETTINGS[MATERIAL.GRASS];
-      const boost=macroBoostAt(wx,wy,mat);
-      const i=(py*size+px)*4;
-      data[i]=st.color[0];data[i+1]=st.color[1];data[i+2]=st.color[2];
-      data[i+3]=Math.round(255*st.alpha*boost);
-    }
-    macroBoostCtx.putImageData(image,0,0);
-  }
-  function applyMacroBrightness(g,cx,cy){
-    buildMacroBoostMap(cx,cy);
-    g.save();
-    g.imageSmoothingEnabled=true;
-    g.globalCompositeOperation='lighter';
+  syncGrassTuneColors();
 
-    // Do not apply any terrain-wide correction. The atlas source remains the exact base color.
-    // Only local additive noise is drawn on top.
-    g.drawImage(macroBoostCanvas,0,0,macroBoostCanvas.width,macroBoostCanvas.height,0,0,CHUNK*TILE,CHUNK*TILE);
-    g.restore();
+  function clamp01(v){ return v<0?0:v>1?1:v; }
+  function lerp(a,b,t){ return a+(b-a)*t; }
+  function smoothStep(a,b,v){const t=clamp01((v-a)/(b-a));return t*t*(3-2*t);}
+  function smoother5(t){ return t*t*t*(t*(t*6-15)+10); }
+  function valueNoise2D(x,y,salt=0){
+    const x0=Math.floor(x), y0=Math.floor(y), fx=x-x0, fy=y-y0;
+    const v=(ix,iy)=>hash(ix,iy,(seed^salt)>>>0)/4294967295;
+    const v00=v(x0,y0), v10=v(x0+1,y0), v01=v(x0,y0+1), v11=v(x0+1,y0+1);
+    const sx=smoother5(fx), sy=smoother5(fy);
+    const top=lerp(v00,v10,sx), bot=lerp(v01,v11,sx);
+    return lerp(top,bot,sy);
   }
-  function smoothStep(a,b,v){const t=Math.max(0,Math.min(1,(v-a)/(b-a)));return t*t*(3-2*t);}
-  function materialFieldAt(worldGX,worldGY,thresholdMat){
-    // Grid values live at tile centers. Interpolating the four nearest centers creates a continuous curve.
+  function fbm2D(x,y,oct=4,lac=2,gain=.5,salt=0){
+    let amp=.5, freq=1, sum=0, norm=0;
+    for(let i=0;i<oct;i++){
+      sum += valueNoise2D(x*freq,y*freq,(salt + i*0x9E3779B9)>>>0) * amp;
+      norm += amp; amp *= gain; freq *= lac;
+    }
+    return norm>0 ? sum/norm : 0;
+  }
+  function rand01(ix,iy,salt){ return hash(ix,iy,(seed^salt)>>>0)/4294967295; }
+  function materialFieldAt(worldGX,worldGY,targetMat){
+    // 경계 블렌딩은 "해당 재질인가"만으로 계산한다.
+    // PRIORITY 누적 방식은 하위 재질(예: dirt)에 상위 재질(water/asphalt)까지 포함시켜
+    // 경계가 부풀고 이상한 블렌딩 모양을 만든다.
     const gx=worldGX-.5,gy=worldGY-.5;
     const x0=Math.floor(gx),y0=Math.floor(gy),fx=gx-x0,fy=gy-y0;
-    const v=(x,y)=>PRIORITY[materialAtCell(x,y)]>=PRIORITY[thresholdMat]?1:0;
+    const v=(x,y)=>materialAtCell(x,y)===targetMat?1:0;
     const v00=v(x0,y0),v10=v(x0+1,y0),v01=v(x0,y0+1),v11=v(x0+1,y0+1);
     const top=v00+(v10-v00)*fx,bot=v01+(v11-v01)*fx;
     return top+(bot-top)*fy;
+  }
+  function materialAlphaAt(worldGX,worldGY,mat,feather=.20){
+    const field=materialFieldAt(worldGX,worldGY,mat);
+    return smoothStep(.5-feather,.5+feather,field);
+  }
+  function grassVisibilityAt(worldGX,worldGY){
+    // 경계까지 유지해야 하는 잔디의 기본 색 보정용 알파.
+    // 최종 재질 블렌딩과 동일한 grass 필드를 사용한다.
+    return materialAlphaAt(worldGX,worldGY,MATERIAL.GRASS,.20);
+  }
+  function grassDetailVisibilityAt(worldGX,worldGY){
+    // 점묘/얼룩 디테일은 경계 띠에서 제거하고 잔디 내부에만 남긴다.
+    // 경계까지 디테일이 섞이면 흙과 풀 사이가 탁하고 지저분해 보인다.
+    const field=materialFieldAt(worldGX,worldGY,MATERIAL.GRASS);
+    return smoothStep(.46,.84,field);
   }
   function drawMaterialLayer(g,cx,cy,mat){
     g.clearRect(0,0,CHUNK*TILE,CHUNK*TILE);
@@ -10000,34 +10014,263 @@ const TILEMAP_SYSTEM = (()=>{
   function buildMaterialMask(cx,cy,mat){
     const w=terrainMaskCanvas.width,h=terrainMaskCanvas.height;
     const img=terrainMaskCtx.createImageData(w,h),d=img.data;
-    const feather=.20;
+    const feather=.22;
     for(let py=0;py<h;py++){
       const worldGY=cy*CHUNK+(py+.5)*TERRAIN_MASK_SCALE/TILE;
       for(let px=0;px<w;px++){
         const worldGX=cx*CHUNK+(px+.5)*TERRAIN_MASK_SCALE/TILE;
-        const field=materialFieldAt(worldGX,worldGY,mat);
-        const a=Math.round(smoothStep(.5-feather,.5+feather,field)*255);
+        const a=Math.round(materialAlphaAt(worldGX,worldGY,mat,feather)*255);
         const i=(py*w+px)*4;d[i]=d[i+1]=d[i+2]=255;d[i+3]=a;
       }
     }
     terrainMaskCtx.putImageData(img,0,0);
   }
+  function buildNormalizedMaterialMasks(cx,cy,mats,feather=.22){
+    const w=terrainMaskCanvas.width,h=terrainMaskCanvas.height;
+    const masks=mats.map(()=>new Float32Array(w*h));
+    for(let py=0;py<h;py++){
+      const worldGY=cy*CHUNK+(py+.5)*TERRAIN_MASK_SCALE/TILE;
+      for(let px=0;px<w;px++){
+        const worldGX=cx*CHUNK+(px+.5)*TERRAIN_MASK_SCALE/TILE;
+        const p=py*w+px;
+        let sum=0, best=-1, bestIndex=0;
+        for(let mi=0;mi<mats.length;mi++){
+          const a=materialAlphaAt(worldGX,worldGY,mats[mi],feather);
+          masks[mi][p]=a;
+          sum+=a;
+          if(a>best){ best=a; bestIndex=mi; }
+        }
+        if(sum>1e-6){
+          const inv=1/sum;
+          for(let mi=0;mi<mats.length;mi++) masks[mi][p]*=inv;
+        }else{
+          for(let mi=0;mi<mats.length;mi++) masks[mi][p]=0;
+          const cellX=Math.floor(worldGX),cellY=Math.floor(worldGY);
+          const fallbackMat=materialAtCell(cellX,cellY);
+          let fallbackIndex=mats.indexOf(fallbackMat);
+          if(fallbackIndex<0) fallbackIndex=bestIndex||0;
+          masks[fallbackIndex][p]=1;
+        }
+      }
+    }
+    return {w,h,masks};
+  }
+  function writeMaskToCanvas(mask,w,h){
+    const img=terrainMaskCtx.createImageData(w,h),d=img.data;
+    for(let i=0;i<mask.length;i++){
+      const j=i*4;
+      d[j]=255; d[j+1]=255; d[j+2]=255; d[j+3]=Math.round(clamp01(mask[i])*255);
+    }
+    terrainMaskCtx.putImageData(img,0,0);
+  }
+  function renderProcessedMaterialLayer(cx,cy,mat){
+    terrainLayerCtx.setTransform(1,0,0,1,0,0);
+    terrainLayerCtx.globalCompositeOperation='source-over';
+    terrainLayerCtx.clearRect(0,0,terrainLayerCanvas.width,terrainLayerCanvas.height);
+    terrainLayerCtx.imageSmoothingEnabled=true;
+    drawMaterialLayer(terrainLayerCtx,cx,cy,mat);
+    if(mat===MATERIAL.GRASS){
+      buildGrassToneOverlay(cx,cy);
+      terrainLayerCtx.drawImage(terrainFxCanvas,0,0,terrainFxCanvas.width,terrainFxCanvas.height,0,0,CHUNK*TILE,CHUNK*TILE);
+    }else if(mat===MATERIAL.WATER){
+      terrainLayerCtx.save();
+      terrainLayerCtx.globalCompositeOperation='source-atop';
+      terrainLayerCtx.fillStyle='rgba(21,32,31,.20)';
+      terrainLayerCtx.fillRect(0,0,CHUNK*TILE,CHUNK*TILE);
+      terrainLayerCtx.restore();
+    }
+  }
+  function buildGrassVisibilityMask(cx,cy){
+    // 잔디 FX 전용 마스크는 FX 해상도와 동일하게 만든다.
+    // 그래야 큰 얼룩의 외곽이 흙/아스팔트 위로 번지는 현상을 줄일 수 있다.
+    const w=grassFxMaskCanvas.width,h=grassFxMaskCanvas.height;
+    const img=grassFxMaskCtx.createImageData(w,h),d=img.data;
+    for(let py=0;py<h;py++){
+      const worldGY=cy*CHUNK+(py+.5)*GRASS_FX_SCALE/TILE;
+      for(let px=0;px<w;px++){
+        const worldGX=cx*CHUNK+(px+.5)*GRASS_FX_SCALE/TILE;
+        const a=Math.round(clamp01(grassVisibilityAt(worldGX,worldGY))*255);
+        const i=(py*w+px)*4;
+        d[i]=d[i+1]=d[i+2]=255; d[i+3]=a;
+      }
+    }
+    grassFxMaskCtx.putImageData(img,0,0);
+  }
+  function buildGrassDetailMask(cx,cy){
+    const w=grassDetailMaskCanvas.width,h=grassDetailMaskCanvas.height;
+    const img=grassDetailMaskCtx.createImageData(w,h),d=img.data;
+    for(let py=0;py<h;py++){
+      const worldGY=cy*CHUNK+(py+.5)*GRASS_FX_SCALE/TILE;
+      for(let px=0;px<w;px++){
+        const worldGX=cx*CHUNK+(px+.5)*GRASS_FX_SCALE/TILE;
+        const a=Math.round(clamp01(grassDetailVisibilityAt(worldGX,worldGY))*255);
+        const i=(py*w+px)*4;
+        d[i]=d[i+1]=d[i+2]=255; d[i+3]=a;
+      }
+    }
+    grassDetailMaskCtx.putImageData(img,0,0);
+  }
+  function drawGrassStamp(g,x,y,w,h,rot,color,alpha,seedKey){
+    // 성능 최적화: 자국 하나를 2~4개의 도형으로 쪼개던 기존 방식 대신
+    // 불규칙한 타원 1개 + 일부만 작은 코어 1개로 제한한다.
+    g.save();
+    g.translate(x,y);
+    g.rotate(rot);
+    const ox=(rand01(seedKey,1,0x7012)-.5)*w*.16;
+    const oy=(rand01(seedKey,2,0x7013)-.5)*h*.22;
+    const rw=w*(.44+rand01(seedKey,3,0x7014)*.10);
+    const rh=h*(.42+rand01(seedKey,4,0x7015)*.12);
+    g.beginPath();
+    g.ellipse(ox,oy,rw,rh,(rand01(seedKey,5,0x7017)-.5)*.22,0,Math.PI*2);
+    g.fillStyle=`rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
+    g.fill();
+    if(rand01(seedKey,6,0x7018)<.24){
+      g.beginPath();
+      g.ellipse(ox+w*.08,oy-h*.04,rw*.46,rh*.48,0,0,Math.PI*2);
+      g.fillStyle=`rgba(${color[0]},${color[1]},${color[2]},${alpha*.34})`;
+      g.fill();
+    }
+    g.restore();
+  }
+  function drawGrassCluster(g,worldX0,worldY0,scale,cx,cy,rx,ry,clusterAngle,color,count,alphaBase,salt){
+    const baseKey=((Math.floor(cx)*73856093)^(Math.floor(cy)*19349663)^salt)|0;
+    for(let i=0;i<count;i++){
+      const t=rand01(baseKey,i,0x7021)*Math.PI*2;
+      const r=Math.sqrt(rand01(baseKey,i,0x7022));
+      const px=Math.cos(t)*rx*r*(.82+rand01(baseKey,i,0x7023)*.32);
+      const py=Math.sin(t)*ry*r + (rand01(baseKey,i,0x7025)-.5)*ry*.18;
+      const edge=1-r;
+      const w=22+rand01(baseKey,i,0x7026)*30+edge*8;
+      const h=8+rand01(baseKey,i,0x7027)*12+edge*4;
+      const rot=clusterAngle+(rand01(baseKey,i,0x7028)-.5)*.26;
+      const alpha=alphaBase*(.72+rand01(baseKey,i,0x7029)*.48)*(0.84+edge*.18);
+      drawGrassStamp(g,(cx+px-worldX0)/scale,(cy+py-worldY0)/scale,w/scale,h/scale,rot,color,alpha,baseKey^(i*0x9E3779B9));
+    }
+  }
+  function buildGrassToneOverlay(cx,cy){
+    const g=terrainFxCtx;
+    const scale=GRASS_FX_SCALE;
+    const chunkPx=CHUNK*TILE;
+    const worldX0=cx*chunkPx, worldY0=cy*chunkPx;
+    g.save();
+    g.setTransform(1,0,0,1,0,0);
+    g.globalCompositeOperation='source-over';
+    g.clearRect(0,0,terrainFxCanvas.width,terrainFxCanvas.height);
+    g.imageSmoothingEnabled=true;
+
+    // 성능 최적화 핵심:
+    // 기존에는 청크 하나에 수만 개의 타원을 그려 작전 시작이 멈췄다.
+    // 이제는 큰 가로형 군집 수를 제한하고, 자국 자체를 크게 만들어
+    // 적은 드로우콜로도 화면 전체에 넓은 점묘 얼룩이 보이게 한다.
+    const stepX=148, stepY=86;
+    const marginX=260, marginY=180;
+    const minGX=Math.floor((worldX0-marginX)/stepX), maxGX=Math.floor((worldX0+chunkPx+marginX)/stepX);
+    const minGY=Math.floor((worldY0-marginY)/stepY), maxGY=Math.floor((worldY0+chunkPx+marginY)/stepY);
+    for(let gy=minGY;gy<=maxGY;gy++)for(let gx=minGX;gx<=maxGX;gx++){
+      const coarse=fbm2D(gx*.30,gy*.42,3,2,.55,0x8100);
+      const medium=fbm2D(gx*.66+4.1,gy*.82-2.7,2,2,.55,0x8101);
+      const presence=coarse*.68+medium*.32;
+      if(presence<.22&&rand01(gx,gy,0x8102)<.40)continue;
+
+      const centerX=gx*stepX+stepX*(.14+rand01(gx,gy,0x8103)*.72);
+      const centerY=gy*stepY+stepY*(.16+rand01(gx,gy,0x8104)*.68);
+      const visible=grassVisibilityAt(centerX/TILE,centerY/TILE);
+      if(visible<.06)continue;
+
+      const angle=(rand01(gx,gy,0x8107)-.5)*.12;
+      const majorW=(250+rand01(gx,gy,0x8109)*170)*GRASS_TUNE.clusterScale;
+      const majorH=majorW*(.24+rand01(gx,gy,0x810A)*.09);
+      const midWeight=clamp01(.62+(presence-.5)*.54);
+      const hiWeight=clamp01(.56+(medium-.5)*.46+(presence-.5)*.18);
+      const midCount=Math.max(12,Math.floor((20+rand01(gx,gy,0x8112)*11+midWeight*7)*GRASS_TUNE.density));
+      const highCount=Math.max(9,Math.floor((14+rand01(gx,gy,0x8113)*9+hiWeight*6)*GRASS_TUNE.density));
+
+      drawGrassCluster(g,worldX0,worldY0,scale,
+        centerX,centerY,majorW*.55,majorH*.58,angle,
+        GRASS_TONE_MID,midCount,(.070+midWeight*.018)*visible*GRASS_TUNE.midAlpha,
+        ((gx*73856093)^(gy*19349663)^0x8115)|0);
+      drawGrassCluster(g,worldX0,worldY0,scale,
+        centerX+(rand01(gx,gy,0x8116)-.5)*majorW*.18,
+        centerY+(rand01(gx,gy,0x8117)-.5)*majorH*.20,
+        majorW*.42,majorH*.46,angle+(rand01(gx,gy,0x811A)-.5)*.08,
+        GRASS_TONE_HIGH,highCount,(.056+hiWeight*.018)*visible*GRASS_TUNE.highAlpha,
+        ((gx*83492791)^(gy*2971215073)^0x811B)|0);
+    }
+
+    // 군집 사이를 메우는 연결 자국. 이전보다 개수는 적지만 크기는 키워
+    // 화면에 패턴이 충분히 많이 보이도록 한다.
+    const bridgeX=66,bridgeY=42;
+    const minBX=Math.floor((worldX0-120)/bridgeX),maxBX=Math.floor((worldX0+chunkPx+120)/bridgeX);
+    const minBY=Math.floor((worldY0-80)/bridgeY),maxBY=Math.floor((worldY0+chunkPx+80)/bridgeY);
+    for(let by=minBY;by<=maxBY;by++)for(let bx=minBX;bx<=maxBX;bx++){
+      if(rand01(bx,by,0x8201)<.16/Math.max(.65,GRASS_TUNE.density))continue;
+      const wx=bx*bridgeX+bridgeX*(.12+rand01(bx,by,0x8202)*.76);
+      const wy=by*bridgeY+bridgeY*(.14+rand01(bx,by,0x8203)*.72);
+      const visible=grassVisibilityAt(wx/TILE,wy/TILE);
+      if(visible<.10)continue;
+      const n=fbm2D(wx*.0034,wy*.0056,3,2,.55,0x8204);
+      const high=rand01(bx,by,0x8205)<.48;
+      const color=high?GRASS_TONE_HIGH:GRASS_TONE_MID;
+      const count=Math.max(2,Math.floor((3+rand01(bx,by,0x8206)*3)*Math.min(1.55,GRASS_TUNE.density)));
+      drawGrassCluster(g,worldX0,worldY0,scale,wx,wy,
+        34+rand01(bx,by,0x8207)*22,12+rand01(bx,by,0x8208)*8,
+        (rand01(bx,by,0x8209)-.5)*.12,color,count,
+        ((high?.040*GRASS_TUNE.highAlpha:.044*GRASS_TUNE.midAlpha)+n*.010)*visible,
+        ((bx*334214459)^(by*668265263)^0x820A)|0);
+    }
+
+    // 지금까지 그린 점묘 디테일을 별도 레이어로 보관한다.
+    grassDetailCtx.save();
+    grassDetailCtx.setTransform(1,0,0,1,0,0);
+    grassDetailCtx.globalCompositeOperation='source-over';
+    grassDetailCtx.clearRect(0,0,grassDetailCanvas.width,grassDetailCanvas.height);
+    grassDetailCtx.drawImage(terrainFxCanvas,0,0);
+    buildGrassDetailMask(cx,cy);
+    grassDetailCtx.globalCompositeOperation='destination-in';
+    grassDetailCtx.imageSmoothingEnabled=true;
+    grassDetailCtx.drawImage(grassDetailMaskCanvas,0,0);
+    grassDetailCtx.restore();
+
+    // 경계까지 이어져야 하는 것은 점묘가 아니라 기본 색 복원이다.
+    // 따라서 원본 FX 캔버스는 비우고 복원색만 전체 grass 블렌드 알파로 적용한다.
+    g.globalCompositeOperation='source-over';
+    g.clearRect(0,0,terrainFxCanvas.width,terrainFxCanvas.height);
+    g.fillStyle=`rgba(${GRASS_RECOVERY[0]},${GRASS_RECOVERY[1]},${GRASS_RECOVERY[2]},${GRASS_TUNE.recoveryAlpha})`;
+    g.fillRect(0,0,terrainFxCanvas.width,terrainFxCanvas.height);
+    buildGrassVisibilityMask(cx,cy);
+    g.globalCompositeOperation='destination-in';
+    g.imageSmoothingEnabled=true;
+    g.drawImage(grassFxMaskCanvas,0,0);
+
+    // 내부로 물린 점묘 디테일을 다시 합성한다.
+    g.globalCompositeOperation='source-over';
+    g.drawImage(grassDetailCanvas,0,0);
+    g.restore();
+  }
   function buildChunk(cx,cy){
     const cvs=document.createElement('canvas');cvs.width=CHUNK*TILE;cvs.height=CHUNK*TILE;
     const g=cvs.getContext('2d');g.imageSmoothingEnabled=true;
-    // Grass is the base. Higher-priority materials are composited by one continuous global mask each.
-    drawMaterialLayer(g,cx,cy,MATERIAL.GRASS);
-    for(const mat of [MATERIAL.DIRT,MATERIAL.ASPHALT,MATERIAL.WATER]){
-      drawMaterialLayer(terrainLayerCtx,cx,cy,mat);
-      buildMaterialMask(cx,cy,mat);
+
+    // 핵심 수정:
+    // - 기존 방식은 grass를 바닥에 먼저 깔고 나머지 재질을 알파로 덮는 구조였다.
+    // - 또한 grass 후처리 마스크가 "grass 셀 내부"만 보정해서 경계면에서는 보정 전 grass가 비쳤다.
+    // - 그래서 경계에서 알파 합이 1이 되지 않으면 grass 원본/후처리 결과가 비쳐 보였다.
+    // - 이제는 각 재질 마스크를 한 번에 계산하고 정규화하여,
+    //   "최종 보정이 끝난 재질 레이어들끼리만" 섞이도록 만든다.
+    const mats=[MATERIAL.GRASS,MATERIAL.DIRT,MATERIAL.ASPHALT,MATERIAL.WATER];
+    const normalized=buildNormalizedMaterialMasks(cx,cy,mats,.18);
+
+    for(let mi=0;mi<mats.length;mi++){
+      const mat=mats[mi];
+      renderProcessedMaterialLayer(cx,cy,mat);
+      writeMaskToCanvas(normalized.masks[mi],normalized.w,normalized.h);
+      terrainLayerCtx.save();
       terrainLayerCtx.globalCompositeOperation='destination-in';
       terrainLayerCtx.imageSmoothingEnabled=true;
       terrainLayerCtx.drawImage(terrainMaskCanvas,0,0,terrainLayerCanvas.width,terrainLayerCanvas.height);
-      terrainLayerCtx.globalCompositeOperation='source-over';
-      if(mat===MATERIAL.WATER){terrainLayerCtx.fillStyle='rgba(21,32,31,.20)';terrainLayerCtx.fillRect(0,0,CHUNK*TILE,CHUNK*TILE);}
+      terrainLayerCtx.restore();
       g.drawImage(terrainLayerCanvas,0,0);
     }
-    applyMacroBrightness(g,cx,cy);
     return cvs;
   }
   function getChunk(cx,cy){
@@ -10041,12 +10284,7 @@ const TILEMAP_SYSTEM = (()=>{
     const viewW=w/z,viewH=h/z;
     const minCX=Math.max(0,Math.floor((camObj.x-X0)/(CHUNK*TILE))-1),maxCX=Math.min(Math.ceil(COLS/CHUNK)-1,Math.floor((camObj.x+viewW-X0)/(CHUNK*TILE))+1);
     const minCY=Math.max(0,Math.floor((camObj.y-Y0)/(CHUNK*TILE))-1),maxCY=Math.min(Math.ceil(ROWS/CHUNK)-1,Math.floor((camObj.y+viewH-Y0)/(CHUNK*TILE))+1);
-    for(let cy=minCY;cy<=maxCY;cy++)for(let cx=minCX;cx<=maxCX;cx++){
-      const px=Math.round(X0+cx*CHUNK*TILE),py=Math.round(Y0+cy*CHUNK*TILE);
-      // Draw cached chunks with a 1px right/bottom overlap. This prevents the canvas
-      // background from leaking through due to camera scaling/sub-pixel sampling.
-      g.drawImage(getChunk(cx,cy),px,py,CHUNK*TILE+1,CHUNK*TILE+1);
-    }
+    for(let cy=minCY;cy<=maxCY;cy++)for(let cx=minCX;cx<=maxCX;cx++)g.drawImage(getChunk(cx,cy),X0+cx*CHUNK*TILE,Y0+cy*CHUNK*TILE);
     if(debug.grid||debug.nav){
       const sx=Math.max(0,Math.floor((camObj.x-X0)/TILE)-1),ex=Math.min(COLS-1,Math.ceil((camObj.x+viewW-X0)/TILE)+1);
       const sy=Math.max(0,Math.floor((camObj.y-Y0)/TILE)-1),ey=Math.min(ROWS-1,Math.ceil((camObj.y+viewH-Y0)/TILE)+1);
@@ -10056,7 +10294,6 @@ const TILEMAP_SYSTEM = (()=>{
       }
     }
   }
-
   function isWaterWorld(x,y){ const c=cellFromWorld(x,y); return materialAtCell(c.x,c.y)===MATERIAL.WATER; }
   function groundCellHasWall(x,y){
     const wx0=Math.floor((x*TILE)/WALL_TILE), wy0=Math.floor((y*TILE)/WALL_TILE);
@@ -10574,14 +10811,57 @@ const TILEMAP_SYSTEM = (()=>{
     player.x=START.x;player.y=START.y;enemies=[];populateWorld();
     if(typeof toast==='function')toast(`랜덤 맵 재생성 · Seed ${seed}`);
   }
-  function toggleDebug(){ debug.grid=!debug.grid;debug.nav=debug.grid;debug.wallMask=debug.grid;invalidate(); }
+  function invalidateGrassTuning(){
+    syncGrassTuneColors();
+    chunkCache.clear();
+    invalidate();
+  }
+  function ensureGrassDebugPanel(){
+    let panel=document.getElementById('grassDebugPanel');
+    if(panel)return panel;
+    panel=document.createElement('div');
+    panel.id='grassDebugPanel';
+    panel.style.cssText='position:fixed;right:12px;bottom:12px;z-index:120;width:300px;padding:12px 13px;border:1px solid rgba(160,210,90,.75);border-radius:10px;background:rgba(10,16,10,.93);color:#eef7df;font:12px/1.35 Segoe UI,Malgun Gothic,sans-serif;box-shadow:0 12px 36px rgba(0,0,0,.55);pointer-events:auto;display:none';
+    panel.innerHTML=`<div style="font-weight:900;color:#c8ef70;margin-bottom:8px">잔디 색상/분포 디버그</div>
+      <label style="display:flex;justify-content:space-between;align-items:center;margin:6px 0">기본 복원색 <input data-k="baseHex" type="color" value="${GRASS_TUNE.baseHex}"></label>
+      <label style="display:flex;justify-content:space-between;align-items:center;margin:6px 0">중간톤 <input data-k="midHex" type="color" value="${GRASS_TUNE.midHex}"></label>
+      <label style="display:flex;justify-content:space-between;align-items:center;margin:6px 0">밝은톤 <input data-k="highHex" type="color" value="${GRASS_TUNE.highHex}"></label>
+      <label style="display:block;margin:7px 0">분포량 <b data-v="density"></b><input data-k="density" type="range" min="0.6" max="60" step="0.05" value="${GRASS_TUNE.density}" style="width:100%"></label>
+      <label style="display:block;margin:7px 0">얼룩 크기 <b data-v="clusterScale"></b><input data-k="clusterScale" type="range" min="0.65" max="45" step="0.05" value="${GRASS_TUNE.clusterScale}" style="width:100%"></label>
+      <label style="display:block;margin:7px 0">중간톤 강도 <b data-v="midAlpha"></b><input data-k="midAlpha" type="range" min="0" max="45" step="0.05" value="${GRASS_TUNE.midAlpha}" style="width:100%"></label>
+      <label style="display:block;margin:7px 0">밝은톤 강도 <b data-v="highAlpha"></b><input data-k="highAlpha" type="range" min="0" max="45" step="0.05" value="${GRASS_TUNE.highAlpha}" style="width:100%"></label>
+      <label style="display:block;margin:7px 0">기본색 복원 강도 <b data-v="recoveryAlpha"></b><input data-k="recoveryAlpha" type="range" min="0" max="4.5" step="0.005" value="${GRASS_TUNE.recoveryAlpha}" style="width:100%"></label>
+      <div style="margin-top:8px;color:#9fb18c">F9: 잔디 디버그 패널 표시 / Ctrl+F10: 타일맵 디버그 표시</div>`;
+    document.body.appendChild(panel);
+    const refreshLabels=()=>panel.querySelectorAll('[data-v]').forEach(el=>{const k=el.dataset.v;el.textContent=Number(GRASS_TUNE[k]).toFixed(k==='recoveryAlpha'?3:2);});
+    panel.querySelectorAll('input[data-k]').forEach(input=>{
+      input.addEventListener('input',()=>{
+        const k=input.dataset.k;
+        GRASS_TUNE[k]=input.type==='color'?input.value:Number(input.value);
+        refreshLabels();invalidateGrassTuning();
+      });
+    });
+    refreshLabels();
+    return panel;
+  }
+  let grassDebugPanelVisible=false;
+  function setGrassDebugPanelVisible(force){
+    grassDebugPanelVisible=(typeof force==='boolean')?force:!grassDebugPanelVisible;
+    const panel=ensureGrassDebugPanel();
+    panel.style.display=grassDebugPanelVisible?'block':'none';
+    return grassDebugPanelVisible;
+  }
+  function toggleDebug(){
+    debug.grid=!debug.grid;debug.nav=debug.grid;debug.wallMask=debug.grid;
+    invalidate();
+  }
   function coverDepthY(c){
     if(Number.isFinite(c.depthY))return c.depthY;
     if(c.naturalRock)return (c.visualCenterY||c.y+c.h*.5)+(c.visualH||c.h)*.5;
     if(c.tileWall)return (c.visualCenterY||c.y+c.h*.5)+WALL_DRAW_SIZE*.5;
     return c.y+c.h;
   }
-  return {get ready(){return ready;},get seed(){return seed;},set seed(v){seed=v>>>0;},drawGround,isWaterWorld,drawCover,drawNaturalBushes,appendNaturalDepthEntries,coverDepthY,prepare,regenerate,toggleDebug,materialAtCell,cellFromWorld,normalizeLegacyWallCovers};
+  return {get ready(){return ready;},get seed(){return seed;},set seed(v){seed=v>>>0;},drawGround,isWaterWorld,drawCover,drawNaturalBushes,appendNaturalDepthEntries,coverDepthY,prepare,regenerate,toggleDebug,setGrassDebugPanelVisible,materialAtCell,cellFromWorld,normalizeLegacyWallCovers};
 })();
 
 // Preserve the original generator, then add tile terrain and modular walls.
@@ -10607,7 +10887,7 @@ genCovers=function(){
 // Grid-backed water lookup replaces thousands of rectangle scans while preserving the same public function.
 inWater=function(x,y){ return TILEMAP_SYSTEM.isWaterWorld(x,y); };
 
-// Debug controls: Ctrl+F8 = new seed, Ctrl+F9 = same seed, Ctrl+F10 = grid/nav/mask overlay.
+// Debug controls: F9 = grass debug panel, Ctrl+F8 = new seed, Ctrl+F9 = same seed, Ctrl+F10 = grid/nav/mask overlay.
 window.addEventListener('keydown',e=>{
   if(!e.ctrlKey)return;
   if(e.code==='F8'){e.preventDefault();TILEMAP_SYSTEM.regenerate((Date.now()^Math.floor(Math.random()*0xffffffff))>>>0);}
